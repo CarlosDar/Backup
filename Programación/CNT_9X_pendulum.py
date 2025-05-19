@@ -277,7 +277,7 @@ class CNT_frequenciometro:
 
 
 
-#JOAN 3 PROBAMOS A EXTRAER SIMPLEMENTE EL ADEV
+#PROBAMOS A EXTRAER SIMPLEMENTE EL ADEV
     def leer_adev_cnt91(self):
         """
         Extrae la Allan deviation (ADEV) calculada internamente por el CNT-91
@@ -304,6 +304,89 @@ class CNT_frequenciometro:
             Allan_Deviation = None
     
         return Allan_Deviation
+
+
+
+
+
+
+    def obtener_estadisticas(self, tipo_estadistica='ALL'):
+            """
+            Obtiene las variables estadísticas calculadas por el CNT-91.
+            
+            Parámetros:
+                tipo_estadistica (str): Tipo de estadística a obtener. Puede ser:
+                    - 'ALL': Todas las estadísticas disponibles
+                    - 'ADEV': Allan Deviation
+                    - 'MEAN': Media
+                    - 'STD': Desviación estándar
+                    - 'MIN': Valor mínimo
+                    - 'MAX': Valor máximo
+                    - 'PKPK': Valor pico a pico
+            
+            Retorna:
+                dict: Diccionario con las estadísticas solicitadas. Si tipo_estadistica es 'ALL',
+                    devuelve todas las estadísticas disponibles. Si hay error, devuelve None.
+            """
+            # Diccionario de tipos de estadísticas y sus comandos SCPI
+            tipos_estadistica = {
+                'ADEV': ':CALC:AVER:TYPE ADEV',
+                'MEAN': ':CALC:AVER:TYPE MEAN',
+                'STD': ':CALC:AVER:TYPE SDEV',
+                'MIN': ':CALC:AVER:TYPE MIN',
+                'MAX': ':CALC:AVER:TYPE MAX',
+                'PKPK': ':CALC:AVER:TYPE PKPK'
+            }
+            
+            try:
+                # Resetear y limpiar el instrumento
+                self.dev.write('*RST')
+                self.dev.write('*CLS')
+                
+                # Si se solicitan todas las estadísticas
+                if tipo_estadistica.upper() == 'ALL':
+                    resultados = {}
+                    for tipo, comando in tipos_estadistica.items():
+                        # Configurar el tipo de estadística
+                        self.dev.write(comando)
+                        # Solicitar los datos
+                        self.dev.write(':CALC:DATA?')
+                        resp = self.dev.read()
+                        
+                        # Procesar la respuesta
+                        try:
+                            valores = [float(val) for val in resp.strip().split(',') if val]
+                            # El segundo valor es generalmente el que nos interesa
+                            resultados[tipo] = valores[1] if len(valores) > 1 else None
+                        except Exception as e:
+                            print(f"Error procesando {tipo}: {str(e)}")
+                            resultados[tipo] = None
+                    
+                    return resultados
+                
+                # Si se solicita una estadística específica
+                elif tipo_estadistica.upper() in tipos_estadistica:
+                    # Configurar el tipo de estadística
+                    self.dev.write(tipos_estadistica[tipo_estadistica.upper()])
+                    # Solicitar los datos
+                    self.dev.write(':CALC:DATA?')
+                    resp = self.dev.read()
+                    
+                    # Procesar la respuesta
+                    try:
+                        valores = [float(val) for val in resp.strip().split(',') if val]
+                        return valores[1] if len(valores) > 1 else None
+                    except Exception as e:
+                        print(f"Error procesando {tipo_estadistica}: {str(e)}")
+                        return None
+                else:
+                    print(f"Tipo de estadística no válido: {tipo_estadistica}")
+                    print("Tipos válidos:", list(tipos_estadistica.keys()) + ['ALL'])
+                    return None
+                    
+            except Exception as e:
+                print(f"Error en la comunicación con el instrumento: {str(e)}")
+                return None
 
 
 
@@ -560,6 +643,27 @@ except Exception as p:
     print("Error al ejecutar Measure_example:", p) 
 """   
 
+    
 
 
 
+
+
+
+
+
+
+#             obtener_estadisticas
+"""
+# Obtener todas las estadísticas
+todas_estadisticas = cnt91.obtener_estadisticas('ALL')
+# Resultado: {'ADEV': valor, 'MEAN': valor, 'STD': valor, ...}
+
+# Obtener solo ADEV
+adev = cnt91.obtener_estadisticas('ADEV')
+# Resultado: valor numérico
+
+# Obtener solo la media
+media = cnt91.obtener_estadisticas('MEAN')
+# Resultado: valor numérico
+"""

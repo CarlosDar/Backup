@@ -1,0 +1,78 @@
+EXPLICACIÓN DEL FUNCIONAMIENTO DEL FRECUENCÍMETRO CNT-91
+=====================================================
+
+1. MECANISMO DE CÁLCULO DEL FRECUENCÍMETRO
+------------------------------------------
+El CNT-91 utiliza el método de "Recuento Recíproco" para medir la frecuencia. Este método consiste en:
+
+a) Contar el número de ciclos de la señal de entrada durante un intervalo de tiempo fijo (apertura).
+b) Calcular la frecuencia como: f = N/T, donde:
+   - N es el número de ciclos contados
+   - T es el tiempo de apertura
+
+Este método es más preciso que el método de "Recuento Directo" para frecuencias altas, ya que:
+- Minimiza el error de cuantificación
+- Proporciona una resolución constante independiente de la frecuencia
+- Reduce el tiempo de medición necesario
+
+2. ENVÍO DE DATOS Y COMUNICACIÓN
+--------------------------------
+El CNT-91 utiliza el protocolo SCPI (Standard Commands for Programmable Instruments) para la comunicación. 
+El proceso de medición sigue estos pasos:
+
+[DIAGRAMA DE FLUJO]
+Usuario -> Configuración -> Inicio Medición -> Espera -> Lectura -> Procesamiento
+
+a) Configuración inicial:
+   *RST     -> Resetea el instrumento a valores por defecto
+   *CLS     -> Limpia el registro de errores
+   CONF:FREQ -> Configura el modo de medición de frecuencia
+   SENS:ACQ:APER -> Establece el tiempo de apertura
+   ARM:COUN -> Define el número de muestras a adquirir
+   FORM:TINF -> Activa la inclusión de timestamps
+
+b) Inicio de medición:
+   INIT     -> Inicia la secuencia de medición
+
+c) Lectura de datos:
+   FETC:ARR? -> Recupera todas las muestras almacenadas
+
+3. EXPLICACIÓN DE COMANDOS SCPI RELEVANTES
+-----------------------------------------
+*RST: Resetea el instrumento a su estado inicial
+*CLS: Limpia el registro de errores
+CONF:FREQ: Configura el instrumento para medir frecuencia
+SENS:ACQ:APER: Establece el tiempo de apertura para cada medición
+ARM:COUN: Define el número de muestras a adquirir
+FORM:TINF: Activa/desactiva la inclusión de timestamps en las mediciones
+INIT: Inicia la secuencia de medición
+FETC:ARR?: Recupera las muestras almacenadas en el buffer
+
+4. PROCESO DE MEDICIÓN DETALLADO
+--------------------------------
+1. El usuario configura los parámetros de medición:
+   - Número de muestras
+   - Intervalo entre muestras
+   - Canal de entrada
+
+2. El instrumento realiza la secuencia:
+   a) Espera al primer flanco de la señal
+   b) Comienza a contar ciclos
+   c) Al finalizar el tiempo de apertura, calcula la frecuencia
+   d) Almacena el resultado con su timestamp
+   e) Repite el proceso para cada muestra
+
+3. Los datos se devuelven en formato:
+   frecuencia1,timestamp1,frecuencia2,timestamp2,...
+
+4. El software procesa los datos:
+   - Convierte los valores a números
+   - Agrupa en pares (frecuencia, timestamp)
+   - Ajusta los timestamps para que sean relativos al primero
+
+5. CONSIDERACIONES IMPORTANTES
+-----------------------------
+- El tiempo de espera debe ser suficiente para completar todas las mediciones
+- Se añade un margen del 10% al tiempo de espera para asegurar la completitud
+- Los timestamps son relativos al inicio de la medición
+- El formato de los datos incluye tanto la frecuencia como el momento exacto de la medición 
