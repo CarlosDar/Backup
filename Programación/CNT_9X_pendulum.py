@@ -667,3 +667,74 @@ adev = cnt91.obtener_estadisticas('ADEV')
 media = cnt91.obtener_estadisticas('MEAN')
 # Resultado: valor numérico
 """
+
+    def medir_n_muestras_equidistantesV2(self, n_muestras=10, intervalo_s=0.1, canal='A'):
+        """
+        Versión 2.0 de la función de medición de muestras equidistantes.
+        Realiza una adquisición de 'n_muestras' equidistantes en el tiempo usando el CNT-91,
+        devolviendo tres arrays separados: frecuencias, timestamps y delta_tiempos.
+    
+        Parámetros:
+            n_muestras: int
+                Número de muestras a medir (por defecto 10)
+            intervalo_s: float
+                Intervalo de tiempo entre muestras en segundos (por defecto 0.1s)
+            canal: str o int
+                Canal de medida: 'A', 'B', 1 o 2 (por defecto 'A')
+    
+        Devuelve:
+            tuple: (frecuencias, timestamps, delta_tiempos)
+                - frecuencias: array de floats con las frecuencias medidas
+                - timestamps: array de floats con los tiempos absolutos
+                - delta_tiempos: array de floats con los tiempos relativos al primer valor
+        """
+    
+        import time
+        import numpy as np
+    
+        # ========== SECCIÓN 1: Validación y selección de canal ==========
+        canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
+        ch = str(canal).upper()
+        if ch not in canales:
+            raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
+        canal_cmd = canales[ch]
+    
+        # ========== SECCIÓN 2: Configuración mínima del instrumento ==========
+        self.dev.write('*RST')
+        self.dev.write("*CLS")
+        self.dev.write(f'CONF:FREQ {canal_cmd}')
+        self.dev.write(f'SENS:ACQ:APER {intervalo_s}')
+        self.dev.write(f'ARM:COUN {n_muestras}')
+        self.dev.write('FORM:TINF ON')
+    
+        # ========== SECCIÓN 3: Lanzamiento de adquisición ==========
+        self.dev.write('INIT')
+    
+        # ========== SECCIÓN 4: Espera para completar la adquisición ==========
+        tiempo_espera = intervalo_s * n_muestras * 1.1
+        time.sleep(tiempo_espera)
+    
+        # ========== SECCIÓN 5: Recuperación y procesamiento de los datos ==========
+        self.dev.write('FETC:ARR? MAX')
+        data = self.dev.read()
+        
+        try:
+            # Convertir la respuesta en una lista de valores
+            valores = [float(val) for val in data.strip().split(',') if val]
+            
+            # Separar frecuencias y timestamps
+            frecuencias = valores[::2]  # Valores en posiciones pares
+            timestamps = valores[1::2]  # Valores en posiciones impares
+            
+            # Convertir a arrays numpy
+            frecuencias = np.array(frecuencias)
+            timestamps = np.array(timestamps)
+            
+            # Calcular delta_tiempos (tiempos relativos al primer valor)
+            delta_tiempos = timestamps - timestamps[0]
+            
+            return frecuencias, timestamps, delta_tiempos
+            
+        except Exception as e:
+            print(f"Error procesando los datos: {str(e)}")
+            return None, None, None
