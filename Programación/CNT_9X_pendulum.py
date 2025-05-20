@@ -261,7 +261,78 @@ class CNT_frequenciometro:
         # 12. Devolver la lista de tuplas (frecuencia, delta_t)
         return resultados
             
+
+        # Version 2 : Devuelve Frecuencias, Tiempos absolutos y Tiempos relativos    [COMPROBAR QUE FUNCIONA ]
+    def medir_n_muestras_equidistantesV2(self, n_muestras=10, intervalo_s=0.1, canal='A'):
+        """
+        Versión 2.0 de la función de medición de muestras equidistantes.
+        Realiza una adquisición de 'n_muestras' equidistantes en el tiempo usando el CNT-91,
+        devolviendo tres arrays separados: frecuencias, timestamps y delta_tiempos.
+    
+        Parámetros:
+            n_muestras: int
+                Número de muestras a medir (por defecto 10)
+            intervalo_s: float
+                Intervalo de tiempo entre muestras en segundos (por defecto 0.1s)
+            canal: str o int
+                Canal de medida: 'A', 'B', 1 o 2 (por defecto 'A')
+    
+        Devuelve:
+            tuple: (frecuencias, timestamps, delta_tiempos)
+                - frecuencias: array de floats con las frecuencias medidas
+                - timestamps: array de floats con los tiempos absolutos
+                - delta_tiempos: array de floats con los tiempos relativos al primer valor
+        """
+    
+        import time
+        import numpy as np
+    
+        # ========== SECCIÓN 1: Validación y selección de canal ==========
+        canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
+        ch = str(canal).upper()
+        if ch not in canales:
+            raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
+        canal_cmd = canales[ch]
+    
+        # ========== SECCIÓN 2: Configuración mínima del instrumento ==========
+        self.dev.write('*RST')
+        self.dev.write("*CLS")
+        self.dev.write(f'CONF:FREQ {canal_cmd}')
+        self.dev.write(f'SENS:ACQ:APER {intervalo_s}')
+        self.dev.write(f'ARM:COUN {n_muestras}')
+        self.dev.write('FORM:TINF ON')
+    
+        # ========== SECCIÓN 3: Lanzamiento de adquisición ==========
+        self.dev.write('INIT')
+    
+        # ========== SECCIÓN 4: Espera para completar la adquisición ==========
+        tiempo_espera = intervalo_s * n_muestras * 1.1
+        time.sleep(tiempo_espera)
+    
+        # ========== SECCIÓN 5: Recuperación y procesamiento de los datos ==========
+        self.dev.write('FETC:ARR? MAX')
+        data = self.dev.read()
+        
+        try:
+            # Convertir la respuesta en una lista de valores
+            valores = [float(val) for val in data.strip().split(',') if val]
             
+            # Separar frecuencias y timestamps
+            frecuencias = valores[::2]  # Valores en posiciones pares
+            timestamps = valores[1::2]  # Valores en posiciones impares
+            
+            # Convertir a arrays numpy
+            frecuencias = np.array(frecuencias)
+            timestamps = np.array(timestamps)
+            
+            # Calcular delta_tiempos (tiempos relativos al primer valor)
+            delta_tiempos = timestamps - timestamps[0]
+            
+            return frecuencias, timestamps, delta_tiempos
+            
+        except Exception as e:
+            print(f"Error procesando los datos: {str(e)}")
+            return None, None, None
 
 
 
@@ -277,7 +348,7 @@ class CNT_frequenciometro:
 
 
 
-#PROBAMOS A EXTRAER SIMPLEMENTE EL ADEV
+#PROBAMOS A EXTRAER SIMPLEMENTE EL ADEV  [COMPROBAR QUE FUNCIONA ]
     def leer_adev_cnt91(self):
         """
         Extrae la Allan deviation (ADEV) calculada internamente por el CNT-91
@@ -309,7 +380,7 @@ class CNT_frequenciometro:
 
 
 
-
+     #Devuelve todas las estadisticas calculadas por el CNT-91.  [COMPROBAR QUE FUNCIONA ]
     def obtener_estadisticas(self, tipo_estadistica='ALL'):
             """
             Obtiene las variables estadísticas calculadas por el CNT-91.
@@ -650,11 +721,11 @@ except Exception as p:
 
 
 
+# obtener_estadisticas 
 
-
-
-#             obtener_estadisticas
 """
+#             obtener_estadisticas
+
 # Obtener todas las estadísticas
 todas_estadisticas = cnt91.obtener_estadisticas('ALL')
 # Resultado: {'ADEV': valor, 'MEAN': valor, 'STD': valor, ...}
@@ -666,75 +737,54 @@ adev = cnt91.obtener_estadisticas('ADEV')
 # Obtener solo la media
 media = cnt91.obtener_estadisticas('MEAN')
 # Resultado: valor numérico
+
+
+
+
 """
 
-    def medir_n_muestras_equidistantesV2(self, n_muestras=10, intervalo_s=0.1, canal='A'):
-        """
-        Versión 2.0 de la función de medición de muestras equidistantes.
-        Realiza una adquisición de 'n_muestras' equidistantes en el tiempo usando el CNT-91,
-        devolviendo tres arrays separados: frecuencias, timestamps y delta_tiempos.
-    
-        Parámetros:
-            n_muestras: int
-                Número de muestras a medir (por defecto 10)
-            intervalo_s: float
-                Intervalo de tiempo entre muestras en segundos (por defecto 0.1s)
-            canal: str o int
-                Canal de medida: 'A', 'B', 1 o 2 (por defecto 'A')
-    
-        Devuelve:
-            tuple: (frecuencias, timestamps, delta_tiempos)
-                - frecuencias: array de floats con las frecuencias medidas
-                - timestamps: array de floats con los tiempos absolutos
-                - delta_tiempos: array de floats con los tiempos relativos al primer valor
-        """
-    
-        import time
-        import numpy as np
-    
-        # ========== SECCIÓN 1: Validación y selección de canal ==========
-        canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
-        ch = str(canal).upper()
-        if ch not in canales:
-            raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
-        canal_cmd = canales[ch]
-    
-        # ========== SECCIÓN 2: Configuración mínima del instrumento ==========
-        self.dev.write('*RST')
-        self.dev.write("*CLS")
-        self.dev.write(f'CONF:FREQ {canal_cmd}')
-        self.dev.write(f'SENS:ACQ:APER {intervalo_s}')
-        self.dev.write(f'ARM:COUN {n_muestras}')
-        self.dev.write('FORM:TINF ON')
-    
-        # ========== SECCIÓN 3: Lanzamiento de adquisición ==========
-        self.dev.write('INIT')
-    
-        # ========== SECCIÓN 4: Espera para completar la adquisición ==========
-        tiempo_espera = intervalo_s * n_muestras * 1.1
-        time.sleep(tiempo_espera)
-    
-        # ========== SECCIÓN 5: Recuperación y procesamiento de los datos ==========
-        self.dev.write('FETC:ARR? MAX')
-        data = self.dev.read()
-        
-        try:
-            # Convertir la respuesta en una lista de valores
-            valores = [float(val) for val in data.strip().split(',') if val]
-            
-            # Separar frecuencias y timestamps
-            frecuencias = valores[::2]  # Valores en posiciones pares
-            timestamps = valores[1::2]  # Valores en posiciones impares
-            
-            # Convertir a arrays numpy
-            frecuencias = np.array(frecuencias)
-            timestamps = np.array(timestamps)
-            
-            # Calcular delta_tiempos (tiempos relativos al primer valor)
-            delta_tiempos = timestamps - timestamps[0]
-            
-            return frecuencias, timestamps, delta_tiempos
-            
-        except Exception as e:
-            print(f"Error procesando los datos: {str(e)}")
-            return None, None, None
+
+
+
+
+
+#medir_n_muestras_equidistantesV2 
+
+"""
+
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+# Parámetros de la prueba
+n_muestras = 5
+intervalo_s = 0.2
+
+# Calcular y mostrar el tiempo de espera antes de medir
+tiempo_espera = n_muestras * intervalo_s * 1.1
+
+# Conversión a formato horas:minutos:segundos
+horas = int(tiempo_espera // 3600)
+minutos = int((tiempo_espera % 3600) // 60)
+segundos = tiempo_espera % 60
+
+print(f"TIEMPO DE ESPERA ESTIMADO = {tiempo_espera:.2f} segundos "
+      f"({horas:02d}:{minutos:02d}:{segundos:05.2f} [hh:mm:ss])")
+
+# Ejecutar la medición con la nueva función V2
+frecuencias, timestamps, delta_tiempos = objt_prueba.medir_n_muestras_equidistantesV2(n_muestras=n_muestras, intervalo_s=intervalo_s)
+
+# Mostrar los resultados en el formato solicitado
+print("\nResultados de la medición:")
+for i in range(len(frecuencias)):
+    print(f"Muestra {i+1}: {frecuencias[i]:.6f} Hz, {timestamps[i]:.6f} s, {delta_tiempos[i]:.6f} s") 
+
+"""
