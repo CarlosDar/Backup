@@ -38,3 +38,41 @@ else:
 print("Frecuencia (Hz), Delta t (s) respecto a la primera muestra:")
 for freq, dt in resultados_rel:
     print(f"{freq:.6f}, {dt:.6f}")
+
+"""
+         Ilustración simplificada (puedes imaginar así):
+
+Tiempo (s) ───────────────────────────────────────────────►
+
+|<    intervalo_s >|<    intervalo_s  >| ...
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│   Muestra 1     │ │   Muestra 2     │ │   Muestra 3     │
+│ (cuenta pulsos) │ │ (cuenta pulsos) │ │ (cuenta pulsos) │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+     ▲ t1                   ▲ t2                   ▲ t3
+   (frecuencia1)         (frecuencia2)         (frecuencia3)
+
+Cada bloque es una ventana de observación.
+
+En cada ventana se cuenta el número de ciclos entrantes y se calcula frecuencia.
+
+El timestamp registrado es el final de la ventana.
+
+✅ Conclusión física
+El CNT-91:
+
+
+Abre una ventana de tiempo fija (definida por SENS:ACQ:APER) para observar pasivamente la señal de entrada.
+
+Cuenta los ciclos/pulsos completos dentro de cada ventana.
+
+Calcula frecuencia y registra el instante temporal.
+
+Este proceso se repite automáticamente n_muestras veces durante el tiempo total de medición.
+        
+        
+        
+        
+        
+        
+"""
