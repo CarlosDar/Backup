@@ -1,4 +1,4 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -20,17 +20,18 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Virtual environments
 venv/
 ENV/
 env/
+.env/
 
-# IDE
+# IDE specific files
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# OS
+# OS specific files
 .DS_Store
 Thumbs.db 
