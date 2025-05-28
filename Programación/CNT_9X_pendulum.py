@@ -1906,6 +1906,9 @@ except Exception as p:
 
 
 
+
+
+
 def consultar_configuracion_actual(self, canal='A'):
             """
             Consulta y muestra la configuración actual del dispositivo para el canal especificado.
@@ -1962,42 +1965,87 @@ def consultar_configuracion_actual(self, canal='A'):
 
 
 
-    def leer_adev_cnt91(self):
-            """
-            Extrae la Allan deviation (ADEV) calculada internamente por el CNT-91
-            para la última adquisición realizada.
+def leer_adev_cnt91(self):
+        """
+        Extrae la Allan deviation (ADEV) calculada internamente por el CNT-91
+        para la última adquisición realizada.
+    
+        Retorna:
+            Allan_Deviation: float
+                Allan deviation interna (o None si ocurre algún error)
+        """
+        # 1. Resetear el instrumento para asegurar estado limpio
+        self.dev.write('*RST')
+        # 2. Limpiar errores previos para evitar problemas durante la medición
+        self.dev.write("*CLS")
         
-            Retorna:
-                Allan_Deviation: float
-                    Allan deviation interna (o None si ocurre algún error)
-            """
-            # 1. Resetear el instrumento para asegurar estado limpio
-            self.dev.write('*RST')
-            # 2. Limpiar errores previos para evitar problemas durante la medición
-            self.dev.write("*CLS")
-            
-            # 3. Activar el cálculo estadístico
-            self.dev.write(':CALC:STAT ON')
-            
-            # 4. Configurar el tipo de cálculo como Allan deviation
-            self.dev.write(':CALC:AVER:TYPE ADEV')
-            
-            # 5. Realizar el cálculo
-            self.dev.write(':CALC:IMM')
-            
-            # 6. Obtener los datos calculados
-            self.dev.write(':CALC:DATA?')
-            resp_adev = self.dev.read()
-            print("Valor bruto de ADEV:", resp_adev)
+        # 3. Activar el cálculo estadístico
+        self.dev.write(':CALC:STAT ON')
         
-            # Intenta extraer el segundo valor como ADEV
-            try:
-                valores = [float(val) for val in resp_adev.strip().split(',') if val]
-                Allan_Deviation = valores[1] if len(valores) > 1 else None
-            except Exception:
-                Allan_Deviation = None
-            
-            # 7. Desactivar el cálculo estadístico al terminar
-            self.dev.write(':CALC:STAT OFF')
+        # 4. Configurar el tipo de cálculo como Allan deviation
+        self.dev.write(':CALC:AVER:TYPE ADEV')
         
-            return Allan_Deviation
+        # 5. Realizar el cálculo
+        self.dev.write(':CALC:IMM') # HACE FALTA REALMENTE ???????????? Es útil cuando se quiere cambiar el tipo de cálculo estadístico (por ejemplo, de desviación estándar a media) sin tener que realizar una nueva medición
+        
+        # 6. Obtener los datos calculados
+        self.dev.write(':CALC:DATA?')
+        resp_adev = self.dev.read()
+        print("Valor bruto de ADEV:", resp_adev)
+    
+        # Intenta extraer el segundo valor como ADEV
+        try:
+            valores = [float(val) for val in resp_adev.strip().split(',') if val]
+            Allan_Deviation = valores[1] if len(valores) > 1 else None
+        except Exception:
+            Allan_Deviation = None
+        
+        # 7. Desactivar el cálculo estadístico al terminar
+        self.dev.write(':CALC:STAT OFF')
+    
+        return Allan_Deviation
+
+def leer_adev_cnt91_Improved(self, intervalo_s=0.1):
+        """
+        Versión mejorada que permite configurar el intervalo de adquisición antes de medir el ADEV.
+        
+        Parámetros:
+            intervalo_s (float): Intervalo de adquisición en segundos (por defecto 0.1s)
+        
+        Retorna:
+            Allan_Deviation: float
+                Allan deviation interna (o None si ocurre algún error)
+        """
+        # 1. Resetear el instrumento para asegurar estado limpio
+        self.dev.write('*RST')
+        # 2. Limpiar errores previos para evitar problemas durante la medición
+        self.dev.write("*CLS")
+        
+        # 3. Configurar el intervalo de adquisición
+        self.dev.write(f'SENS:ACQ:APER {intervalo_s}')
+        
+        # 4. Activar el cálculo estadístico
+        self.dev.write(':CALC:STAT ON')
+        
+        # 5. Configurar el tipo de cálculo como Allan deviation
+        self.dev.write(':CALC:AVER:TYPE ADEV')
+        
+        # 6. Realizar el cálculo
+        self.dev.write(':CALC:IMM')
+        
+        # 7. Obtener los datos calculados
+        self.dev.write(':CALC:DATA?')
+        resp_adev = self.dev.read()
+        print(f"Valor bruto de ADEV (intervalo {intervalo_s}s):", resp_adev)
+    
+        # Intenta extraer el segundo valor como ADEV
+        try:
+            valores = [float(val) for val in resp_adev.strip().split(',') if val]
+            Allan_Deviation = valores[1] if len(valores) > 1 else None
+        except Exception:
+            Allan_Deviation = None
+        
+        # 8. Desactivar el cálculo estadístico al terminar
+        self.dev.write(':CALC:STAT OFF')
+    
+        return Allan_Deviation
