@@ -896,17 +896,26 @@ class CNT_frequenciometro:
             print(f"Error procesando los datos: {str(e)}")
             return None, None, None, None, None
 
-
-
-
-
-
-
-
-    
-
-
-
+    def consultar_numero_muestras(self):
+        """
+        Consulta el número actual de muestras configurado en el instrumento.
+        
+        Comandos SCPI utilizados:
+            :CALC:AVER:COUN:CURR? (Calculate Average Count Current Query)
+            - Descripción: Consulta el número actual de muestras configurado
+            - Retorna: El número de muestras configurado como string
+        
+        Retorna:
+            int: Número de muestras configurado actualmente
+            None: Si ocurre algún error al leer el valor
+        """
+        try:
+            self.dev.write(':CALC:AVER:COUN:CURR?')
+            resp = self.dev.read()
+            return int(float(resp))
+        except Exception as e:
+            print(f"Error al consultar número de muestras: {str(e)}")
+            return None
 
     def leer_adev_cnt91(self):
         """
@@ -953,47 +962,388 @@ class CNT_frequenciometro:
             print(f"Error al leer ADEV: {str(e)}")
             return None
 
-    def leer_adev_cnt91_improved2(self):
+    def leer_adev_cnt91_improved2(self, no_samples=100, pacing_state=False, pacing_time=20, canal='A'):
         """
         Versión mejorada 2 de la función para extraer la Allan deviation (ADEV) del CNT-91.
         Sigue la estructura correcta de comandos SCPI para cálculos estadísticos.
+        
+        Nota sobre el cálculo de Allan deviation en el CNT-91:
+        El instrumento calcula la Allan deviation internamente usando la fórmula:
+        σ²(τ) = 1/[2(N-2m)] * Σ[yₖ₊₂ₘ - 2yₖ₊ₘ + yₖ]²
+        
+        Donde:
+        - τ: tiempo de observación
+        - N: número total de muestras
+        - m: número de muestras en cada grupo
+        - yₖ: mediciones de frecuencia
+        
+        El CNT-91:
+        1. Toma las muestras configuradas
+        2. Las agrupa internamente para diferentes valores de τ
+        3. Calcula la Allan deviation para cada τ
+        4. Devuelve los resultados al solicitar :CALC:DATA?
+        
+        Nota importante sobre el número de muestras:
+        El instrumento requiere que el número de muestras sea un múltiplo del número
+        de medidas que puede hacer el trigger. Por ejemplo, si el trigger está configurado
+        para 1000 medidas y pedimos 9500 muestras, el instrumento hará 10000 medidas
+        (el múltiplo de 1000 más cercano a 9500).
+        
+        Parámetros:
+            no_samples (int): Número de muestras para el cálculo
+                - Rango: 2 a 1000000
+                - Default: 100
+                - Descripción: Define cuántas mediciones individuales se realizarán para el cálculo de la Allan deviation.
+                  Un mayor número de muestras proporciona mayor precisión en el cálculo.
+                  Nota: El número real de muestras puede ser mayor si no es múltiplo del trigger.
+            
+            pacing_state (bool): Estado del pacing
+                - Valores posibles: True/False
+                - Default: False
+                - Descripción: Controla si las mediciones se realizan con un intervalo fijo (True)
+                  o inmediatamente una tras otra (False)
+            
+            pacing_time (int): Tiempo de pacing en milisegundos
+                - Rango: 1 a 1000000 ms
+                - Default: 20
+                - Descripción: Define el intervalo de tiempo entre mediciones cuando pacing_state es True.
+                  Solo tiene efecto si pacing_state es True.
+            
+            canal (str o int): Canal de medida
+                - Valores posibles: 'A', 'B', 1 o 2
+                - Default: 'A'
+                - Descripción: Especifica el canal a utilizar para la medición
+                  - 'A' o 1: Canal A
+                  - 'B' o 2: Canal B
+        
+        Comandos SCPI utilizados:
+            1. *RST (Reset)
+               - Descripción: Restablece el instrumento a su estado predeterminado
+               - Efecto: Borra todas las configuraciones personalizadas
+            
+            2. *CLS (Clear Status)
+               - Descripción: Borra el registro de errores y eventos
+               - Efecto: Limpia el buffer de errores para evitar interferencias
+            
+            3. :CONF:FREQ (Configure Frequency)
+               - Descripción: Configura la medición de frecuencia
+               - Sintaxis: :CONF:FREQ (@1) o :CONF:FREQ (@2)
+               - Efecto: Prepara el instrumento para medir frecuencia
+            
+            4. :CALC:AVER:COUN (Calculate Average Count)
+               - Descripción: Configura el número de muestras para el cálculo
+               - Sintaxis: :CALC:AVER:COUN <número>
+               - Efecto: Define cuántas mediciones se realizarán para el cálculo estadístico
+               - Nota: El número real de muestras puede ser mayor si no es múltiplo del trigger
+            
+            5. :TRIG:TIM (Trigger Timer)
+               - Descripción: Configura el intervalo de tiempo entre mediciones
+               - Sintaxis: :TRIG:TIM <tiempo>ms
+               - Efecto: Define el espaciado temporal entre mediciones
+            
+            6. :TRIG:SOUR (Trigger Source)
+               - Descripción: Selecciona la fuente de trigger
+               - Valores: 'IMM' (inmediato) o 'TIM' (timer)
+               - Efecto: Controla cómo se inician las mediciones
+            
+            7. :CALC:STAT (Calculate Statistics)
+               - Descripción: Activa/desactiva el cálculo estadístico
+               - Valores: ON/OFF
+               - Efecto: Habilita el procesamiento estadístico de los datos
+            
+            8. :CALC:TYPE (Calculate Type)
+               - Descripción: Define el tipo de cálculo estadístico
+               - Valor: 'ADEV' para Allan deviation
+               - Efecto: Especifica que se calcule la Allan deviation
+            
+            9. :INIT (Initialize)
+               - Descripción: Inicia la medición
+               - Efecto: Comienza el proceso de adquisición de datos
+            
+            10. *OPC? (Operation Complete Query)
+                - Descripción: Consulta si la operación ha terminado
+                - Efecto: Espera a que se complete la medición actual
+            
+            11. :CALC:DATA? (Calculate Data Query)
+                - Descripción: Solicita los datos calculados (DEBE usarse para operaciones estadísticas)
+                - Efecto: Obtiene los resultados del análisis estadístico
         
         Retorna:
             Allan_Deviation: float
                 Allan deviation interna (o None si ocurre algún error)
         """
         try:
+            # ========== SECCIÓN 1: Validación y selección de canal ==========
+            canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
+            ch = str(canal).upper()
+            if ch not in canales:
+                raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
+            canal_cmd = canales[ch]
+            
             # 1. Resetear el instrumento para asegurar estado limpio
+            # *RST - Restablece el instrumento a su estado predeterminado
             self.dev.write('*RST')
+            
             # 2. Limpiar errores previos
+            # *CLS - Borra el registro de errores
             self.dev.write("*CLS")
             
-            # 3. Configurar y activar el cálculo estadístico
-            self.dev.write(':CALC:AVER:STAT ON')
-            self.dev.write(':CALC:AVER:TYPE ADEV')
+            # 3. Configurar parámetros de medición
+            # :CONF:FREQ - Configura la medición de frecuencia
+            self.dev.write(f':CONF:FREQ {canal_cmd}')
             
-            # 4. Iniciar la medición y esperar a que complete
+            # :CALC:AVER:COUN - Configura el número de muestras para el cálculo
+            self.dev.write(f':CALC:AVER:COUN {no_samples}')
+            
+            # :TRIG:TIM - Configura el tiempo de pacing en milisegundos
+            self.dev.write(f':TRIG:TIM {pacing_time}ms')
+            
+            # :TRIG:SOUR - Configura la fuente de trigger
+            if pacing_state:
+                self.dev.write(':TRIG:SOUR TIM')  # TIM - Timer trigger
+            else:
+                self.dev.write(':TRIG:SOUR IMM')  # IMM - Immediate trigger
+            
+            # 4. Configurar y activar el cálculo estadístico
+            # :CALC:STAT - Activa/desactiva el cálculo estadístico
+            self.dev.write(':CALC:STAT ON')
+            # :CALC:TYPE - Define el tipo de cálculo estadístico (ADEV)
+            self.dev.write(':CALC:TYPE ADEV')
+            
+            # 5. Iniciar la medición y esperar a que complete
+            # :INIT - Inicia la medición
             self.dev.write(':INIT')
+            
+            # Bucle para mostrar el progreso de las muestras
+            import time
+            muestra_anterior = 0
+            while True:
+                self.dev.write(':CALC:AVER:COUN:CURR?')
+                muestra_actual = int(float(self.dev.read()))
+                
+                # Solo mostrar si el número de muestra ha cambiado
+                if muestra_actual != muestra_anterior:
+                    print(f"\rMuestra {muestra_actual} de {no_samples}", end='', flush=True)
+                    muestra_anterior = muestra_actual
+                
+                if muestra_actual >= no_samples:
+                    print()  # Nueva línea al terminar
+                    break
+                    
+                time.sleep(0.1)  # Pequeña pausa para no saturar el bus
+            
+            # *OPC? - Consulta si la operación ha terminado
             self.dev.write('*OPC?')
             self.dev.read()  # Esperar a que complete
             
-            # 5. Obtener los datos calculados
+            # 6. Obtener los datos calculados
+            # :CALC:DATA? - Solicita los datos calculados (DEBE usarse para operaciones estadísticas)
             self.dev.write(':CALC:DATA?')
             resp_adev = self.dev.read()
             print("Valor bruto de ADEV:", resp_adev)
         
-            # 6. Procesar la respuesta
+            # 7. Procesar la respuesta
             try:
                 valores = [float(val) for val in resp_adev.strip().split(',') if val]
                 Allan_Deviation = valores[1] if len(valores) > 1 else None
             except Exception:
                 Allan_Deviation = None
             
-            # 7. Desactivar el cálculo estadístico al terminar
-            self.dev.write(':CALC:AVER:STAT OFF')
+            # 8. Desactivar el cálculo estadístico al terminar
+            self.dev.write(':CALC:STAT OFF')
         
             return Allan_Deviation
             
         except Exception as e:
             print(f"Error al leer ADEV: {str(e)}")
             return None
+
+    def calcular_adev_y_media(self, canal='A'):
+        """
+        Calcula la Allan deviation (ADEV) y el valor medio de las mediciones.
+        Sigue la estructura de comandos SCPI del manual del CNT-91.
+        
+        Parámetros:
+            canal (str o int): Canal de medida
+                - Valores posibles: 'A', 'B', 1 o 2
+                - Default: 'A'
+                - Descripción: Especifica el canal a utilizar para la medición
+                  - 'A' o 1: Canal A
+                  - 'B' o 2: Canal B
+        
+        Comandos SCPI utilizados:
+            1. :CALC:AVER:STAT ON
+               - Descripción: Activa el cálculo estadístico
+            
+            2. :CALC:TYPE ADEV
+               - Descripción: Configura el tipo de cálculo como Allan deviation
+            
+            3. :INIT
+               - Descripción: Inicia la medición
+            
+            4. *OPC?
+               - Descripción: Espera a que la operación se complete
+            
+            5. :CALC:DATA?
+               - Descripción: Obtiene los datos calculados (Allan deviation)
+            
+            6. :CALC:TYPE MEAN
+               - Descripción: Configura el tipo de cálculo como valor medio
+            
+            7. :CALC:IMM?
+               - Descripción: Obtiene el valor medio calculado
+        
+        Retorna:
+            tuple: (allan_deviation, valor_medio)
+                - allan_deviation: float - Valor de la Allan deviation
+                - valor_medio: float - Valor medio de las mediciones
+                Si ocurre algún error, retorna (None, None)
+        """
+        try:
+            # ========== SECCIÓN 1: Validación y selección de canal ==========
+            canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
+            ch = str(canal).upper()
+            if ch not in canales:
+                raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
+            canal_cmd = canales[ch]
+            
+            # 1. Resetear y limpiar
+            self.dev.write('*RST')
+            self.dev.write('*CLS')
+            
+            # 2. Configurar canal
+            self.dev.write(f':CONF:FREQ {canal_cmd}')
+            
+            # 3. Activar estadísticas y configurar ADEV
+            self.dev.write(':CALC:AVER:STAT ON')
+            self.dev.write(':CALC:TYPE ADEV')
+            
+            # 4. Iniciar medición y esperar
+            self.dev.write(':INIT')
+            
+            # 5. Obtener Allan deviation
+            self.dev.write(':CALC:DATA?')
+            resp_adev = self.dev.read()
+            try:
+                valores = [float(val) for val in resp_adev.strip().split(',') if val]
+                allan_deviation = valores[1] if len(valores) > 1 else None
+            except Exception:
+                allan_deviation = None
+            
+            # 6. Mantener ADEV para el valor medio
+            self.dev.write(':CALC:TYPE ADEV')
+            
+            # 7. Obtener valor medio
+            self.dev.write(':CALC:IMM?')
+            resp_media = self.dev.read()
+            try:
+                valor_medio = float(resp_media)
+            except Exception:
+                valor_medio = None
+            
+            # 8. Desactivar estadísticas
+            self.dev.write(':CALC:AVER:STAT OFF')
+            
+            return allan_deviation, valor_medio
+            
+        except Exception as e:
+            print(f"Error al calcular ADEV y media: {str(e)}")
+            return None, None
+
+    def calcular_adev_y_media_improved(self, canal='A'):
+        """
+        Versión mejorada que calcula la Allan deviation (ADEV) y el valor medio.
+        Sigue exactamente la estructura del manual del CNT-91:
+        
+        Ejemplo del manual:
+        SEND :CALC:AVER:STAT ON;TYPE SDEV;:INIT;*OPC
+        Wait for operation complete
+        SEND :CALC:DATA?
+        READ <Value of standard deviation>
+        SEND :CALC:AVER:TYPE MEAN
+        SEND :CALC:IMM?
+        READ <Mean value>
+        
+        Parámetros:
+            canal (str o int): Canal de medida
+                - Valores posibles: 'A', 'B', 1 o 2
+                - Default: 'A'
+                - Descripción: Especifica el canal a utilizar para la medición
+                  - 'A' o 1: Canal A
+                  - 'B' o 2: Canal B
+        
+        Comandos SCPI utilizados:
+            1. :CALC:AVER:STAT ON
+               - Descripción: Activa el cálculo estadístico
+            
+            2. :CALC:TYPE ADEV
+               - Descripción: Configura el tipo de cálculo como Allan deviation
+            
+            3. :INIT
+               - Descripción: Inicia la medición
+            
+            4. *OPC?
+               - Descripción: Espera a que la operación se complete
+            
+            5. :CALC:DATA?
+               - Descripción: Obtiene los datos calculados (Allan deviation)
+            
+            6. :CALC:TYPE MEAN
+               - Descripción: Cambia el tipo de cálculo a valor medio
+            
+            7. :CALC:IMM?
+               - Descripción: Obtiene el valor medio calculado
+        
+        Retorna:
+            tuple: (allan_deviation, valor_medio)
+                - allan_deviation: float - Valor de la Allan deviation
+                - valor_medio: float - Valor medio de las mediciones
+                Si ocurre algún error, retorna (None, None)
+        """
+        try:
+            # ========== SECCIÓN 1: Validación y selección de canal ==========
+            canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
+            ch = str(canal).upper()
+            if ch not in canales:
+                raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
+            canal_cmd = canales[ch]
+            
+            # 1. Resetear y limpiar
+            self.dev.write('*RST')
+            self.dev.write('*CLS')
+            
+            # 2. Configurar canal
+            self.dev.write(f':CONF:FREQ {canal_cmd}')
+            
+            # 3. Activar estadísticas y configurar ADEV (siguiendo el ejemplo del manual)
+            self.dev.write(':CALC:AVER:STAT ON;TYPE ADEV;:INIT;*OPC?')
+            self.dev.read()  # Esperar a que complete
+            
+            # 4. Obtener Allan deviation
+            self.dev.write(':CALC:DATA?')
+            resp_adev = self.dev.read()
+            try:
+                valores = [float(val) for val in resp_adev.strip().split(',') if val]
+                allan_deviation = valores[1] if len(valores) > 1 else None
+            except Exception:
+                allan_deviation = None
+            
+            # 5. Cambiar a cálculo de media (siguiendo el ejemplo del manual)
+            self.dev.write(':CALC:AVER:TYPE MEAN')
+            
+            # 6. Obtener valor medio
+            self.dev.write(':CALC:IMM?')
+            resp_media = self.dev.read()
+            try:
+                valor_medio = float(resp_media)
+            except Exception:
+                valor_medio = None
+            
+            # 7. Desactivar estadísticas
+            self.dev.write(':CALC:AVER:STAT OFF')
+            
+            return allan_deviation, valor_medio
+            
+        except Exception as e:
+            print(f"Error al calcular ADEV y media: {str(e)}")
+            return None, None
