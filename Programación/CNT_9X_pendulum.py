@@ -385,7 +385,19 @@ class CNT_frequenciometro:
         self.dev.write('INIT')
     
         # ========== SECCIÓN 4: Espera para completar la adquisición ==========
-        tiempo_espera = intervalo_s * n_muestras * 1.1
+        # Modelo combinado + margen del 10%, con casos especiales y tiempo mínimo de 0.2s
+        eps = 1e-12
+        T = intervalo_s
+        N = n_muestras
+        if abs(T - 4e-5) < eps and N == 2400:
+            tiempo_espera = 0.25
+        elif abs(T - 4e-4) < eps and N == 1000:
+            tiempo_espera = 0.8
+        else:
+            raw = 2 * T**0.88 * N**0.85
+            lin = 1.14 * T * N
+            val = max(raw, lin)
+            tiempo_espera = max(0.2, val) * 1.1
         time.sleep(tiempo_espera)
     
         # ========== SECCIÓN 5: Recuperación y procesamiento de los datos ==========
@@ -559,7 +571,7 @@ class CNT_frequenciometro:
                                f"Media: {media:.3f} Hz\n"
                                f"Mediana: {mediana:.3f} Hz\n"
                                f"Nº puntos: {n_puntos}")
-                plt.gca().text(0.02, 0.98, texto_stats, fontsize=10,
+                plt.gca().text(0.02, 0.98, texto_stats, fontsize=9,
                                ha='left', va='top', transform=plt.gca().transAxes,
                                bbox=dict(facecolor='white', alpha=0.4, edgecolor='none'))
                 plt.tight_layout()
@@ -572,25 +584,43 @@ class CNT_frequenciometro:
             return None, None, None, None, None
         
         
-#JOAN 3 PROBAMOS OTRO METODO Usar el modo de medición con "Sample Timer"
-# 
-#   Está tiene tiempos y tiempos relativos y GRAFICAR FREQUENCIA VS TIEMPO
-# Añadido que devuelva los Allan deviation
-# Graficar el ALLAN DEVIATION EN FUNCION DE TAUS
+
+
+
+
+
+
+
+
 
     
-    def medir_n_muestras_equidistantesV5(
-            self,
-            n_muestras=10,
-            intervalo_s=0.1,
-            canal='A',
-            graficarFT=True,
-            graficarDevTau=True,
-            exportar_excel=True
-        ):
+
+
+
+
+    def medir_n_muestras_equidistantesV31(self, n_muestras=100, intervalo_s=0.2, canal='A', graficarFT=False, exportar_excel=False):
         """
-        Versión con opción de exportar a Excel (CSV) los datos crudos y las Allan deviations (con 2 decimales).
+        Versión 3.1: Igual que V3, pero añade opción de guardar datos en Excel (.xlsx).
+    
+        Parámetros:
+            n_muestras: int
+                Número de muestras a medir (por defecto 100)
+            intervalo_s: float
+                Intervalo de tiempo entre muestras en segundos (por defecto 0.2s) EL VALOR MÍNIMO ES 
+            canal: str o int
+                Canal de medida: 'A', 'B', 1 o 2 (por defecto 'A')
+            graficarFT: bool
+                Si True, muestra gráfica frecuencia vs tiempo (por defecto True)
+            exportar_excel: bool
+                Si True, exporta los datos a un archivo Excel .xlsx (por defecto True)
+    
+        Devuelve:
+            tuple: (frecuencias, timestamps, delta_tiempos)
+                - frecuencias: array de floats con las frecuencias medidas
+                - timestamps: array de floats con los tiempos absolutos
+                - delta_tiempos: array de floats con los tiempos relativos al primer valor
         """
+    
         import time
         import numpy as np
     
@@ -607,145 +637,124 @@ class CNT_frequenciometro:
         self.dev.write('CAL:INT:AUTO OFF')          # Desactiva autocalibración de interpoladores para máxima velocidad
         self.dev.write('DISP:ENAB OFF')             # Apaga display para máxima velocidad
         self.dev.write(f'CONF:FREQ {canal_cmd}')
-        self.dev.write(f'SENS:ACQ:APER {intervalo_s}')
+        self.dev.write(f'SENS:ACQ:APER {intervalo_s}') # 0.004s mín
         self.dev.write(f'ARM:COUN {n_muestras}')
         self.dev.write('FORM:TINF ON')
+        
     
         # ========== SECCIÓN 3: Lanzamiento de adquisición ==========
         self.dev.write('INIT')
-        tiempo_espera = intervalo_s * n_muestras * 1.1
+    
+     
+        
+        # ========== SECCIÓN 4: Espera para completar la adquisición ==========
+        # Modelo combinado + margen del 10%, con casos especiales y tiempo mínimo de 0.2s
+        eps = 1e-12
+        T = intervalo_s
+        N = n_muestras
+        if abs(T - 4e-5) < eps and N == 2400:
+            tiempo_espera = 0.25
+        elif abs(T - 4e-4) < eps and N == 1000:
+            tiempo_espera = 0.8
+        else:
+            raw = 2 * T**0.88 * N**0.85
+            lin = 1.14 * T * N
+            val = max(raw, lin)
+            tiempo_espera = max(0.2, val) * 1.1
         time.sleep(tiempo_espera)
     
-        # ========== SECCIÓN 4: Recuperación y procesamiento de los datos ==========
+        # ========== SECCIÓN 5: Recuperación y procesamiento de los datos ==========
         self.dev.write('FETC:ARR? MAX')
         data = self.dev.read()
     
         try:
+            # Convertir la respuesta en una lista de valores
             valores = [float(val) for val in data.strip().split(',') if val]
-            frecuencias = np.array(valores[::2])
-            timestamps = np.array(valores[1::2])
+    
+            # Separar frecuencias y timestamps
+            frecuencias = np.array(valores[::2])  # Valores en posiciones pares
+            timestamps = np.array(valores[1::2])  # Valores en posiciones impares
+    
+            # Calcular delta_tiempos (tiempos relativos al primer valor)
             delta_tiempos = timestamps - timestamps[0]
     
-            # ========== SECCIÓN 5: Cálculo de Allan Deviation para diferentes Taus ==========
-            N = len(frecuencias)
-            allan_deviations = []
-            taus = []
-            for m in range(1, N // 2 + 1):
-                M = N // m
-                if M < 2:
-                    break
-                promedios = [np.mean(frecuencias[i * m:(i + 1) * m]) for i in range(M)]
-                dif_cuadrado = [(promedios[i + 1] - promedios[i]) ** 2 for i in range(M - 1)]
-                sigma2 = np.sum(dif_cuadrado) / (2 * (M - 1))
-                sigma = np.sqrt(sigma2)
-                allan_deviations.append(sigma)
-                taus.append(m * intervalo_s)
-            allan_deviations = np.array(allan_deviations)
-            taus = np.array(taus)
+            # ========== SECCIÓN 6: Visualización de resultados ==========
+            if graficarFT:
+                import matplotlib.pyplot as plt
+                from matplotlib.ticker import MaxNLocator
     
-            # ========== SECCIÓN 6: Exportar a Excel/CSV si se solicita ==========
+                maximo = np.max(frecuencias)
+                minimo = np.min(frecuencias)
+                media = np.mean(frecuencias)
+                mediana = np.median(frecuencias)
+                n_puntos = len(frecuencias)
+    
+                plt.figure(figsize=(9, 5))
+                plt.plot(delta_tiempos, frecuencias, marker='o', linestyle='-', label='Frecuencia')
+                plt.xlabel('Tiempo [s]', fontsize=12)
+                plt.ylabel('Frecuencia [Hz]', fontsize=12)
+                plt.title('Frecuencia vs Tiempo')
+                plt.grid(True, which='both', linestyle='--', alpha=0.5)
+                plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+    
+                texto_stats = (f"Máx: {maximo:.3f} Hz\n"
+                               f"Mín: {minimo:.3f} Hz\n"
+                               f"Media: {media:.3f} Hz\n"
+                               f"Mediana: {mediana:.3f} Hz\n"
+                               f"Nº puntos: {n_puntos}")
+                plt.gca().text(0.98, 0.02, texto_stats, fontsize=10,
+                               ha='right', va='bottom', transform=plt.gca().transAxes,
+                               bbox=dict(facecolor='white', alpha=0.7, edgecolor='gray'))
+                plt.tight_layout()
+                plt.show()
+            
+            # ========== SECCIÓN NUEVA: Guardar en Excel (.xlsx) ==========
             if exportar_excel:
                 import pandas as pd
                 from datetime import datetime
     
                 fecha_hora = datetime.now().strftime("%S_%M_%H_%d_%m_%Y")
-                # Formatear arrays a 2 decimales antes de crear los DataFrame
                 raw_data = {
                     "Muestra": [f"Muestra{i}" for i in range(len(frecuencias))],
-                    "Frecuencia [Hz]": np.round(frecuencias, 2),
+                    "Frecuencia [Hz]": np.round(frecuencias, 6),   # Numérico, 6 decimales
                     "Timestamp [s]": np.round(timestamps, 2),
                     "Delta_tiempo [s]": np.round(delta_tiempos, 2)
                 }
                 df_raw = pd.DataFrame(raw_data)
-                nombre_raw = f"RawDataFreqYTiempo_{fecha_hora}.csv"
-                df_raw.to_csv(nombre_raw, index=False, float_format="%.2f")
+                nombre_raw = f"RawDataFreqYTiempo_{fecha_hora}.xlsx"
+                df_raw.to_excel(nombre_raw, index=False, float_format="%.6f")  # <- Guardado en xlsx
                 print(f"Archivo de datos crudos guardado como: {nombre_raw}")
-    
-                allan_data = {
-                    "DATO": [f"DATO{i}" for i in range(len(allan_deviations))],
-                    "AllanDeviation [Hz]": np.round(allan_deviations, 2),
-                    "Tau [s]": np.round(taus, 2)
-                }
-                df_allan = pd.DataFrame(allan_data)
-                nombre_allan = f"AllanDeviationyTaus_{fecha_hora}.csv"
-                df_allan.to_csv(nombre_allan, index=False, float_format="%.2f")
-                print(f"Archivo Allan Deviation guardado como: {nombre_allan}")
-    
-            # ========== SECCIÓN 7: Visualización de resultados (Frecuencia vs Tiempo) ==========
-            if graficarFT:
-                import matplotlib.pyplot as plt
-                from matplotlib.ticker import MaxNLocator
-    
-                plt.figure(figsize=(10, 5))
-                n_puntos = len(frecuencias)
-                plt.scatter(delta_tiempos, frecuencias, s=6, alpha=0.7, label='Frecuencia')
-                plt.xlabel('Tiempo [s]', fontsize=13)
-                plt.ylabel('Frecuencia [Hz]', fontsize=13)
-                plt.title('Frecuencia vs Tiempo', fontsize=15)
-                plt.grid(True, which='both', linestyle='--', alpha=0.5)
-                plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
-                # Estadísticas
-                maximo = np.max(frecuencias)
-                minimo = np.min(frecuencias)
-                media = np.mean(frecuencias)
-                mediana = np.median(frecuencias)
-                texto_stats = (f"Máx: {maximo:.2f} Hz\n"
-                               f"Mín: {minimo:.2f} Hz\n"
-                               f"Media: {media:.2f} Hz\n"
-                               f"Mediana: {mediana:.2f} Hz\n"
-                               f"Nº puntos: {n_puntos}")
-                plt.gca().text(0.02, 0.98, texto_stats, fontsize=10,
-                               ha='left', va='top', transform=plt.gca().transAxes,
-                               bbox=dict(facecolor='white', alpha=0.3, edgecolor='none'))
-                plt.tight_layout()
-                plt.show()
-    
-            # ========== SECCIÓN 8: Visualización de resultados (Allan Deviation vs Tau) ==========
-            if graficarDevTau:
-                import matplotlib.pyplot as plt
-    
-                plt.figure(figsize=(10, 5))
-                plt.scatter(taus, allan_deviations, s=18, color='C0', alpha=0.8, label='Adev')
-                plt.xscale('log')
-                plt.yscale('log')
-                plt.xlabel(r'$\tau$ [s]', fontsize=13)
-                plt.ylabel('Allan Deviation [Hz]', fontsize=13)
-                plt.title('Allan Deviation vs Tau', fontsize=15)
-                plt.grid(True, which='both', linestyle='--', alpha=0.45)
-    
-                idx_min = np.argmin(allan_deviations)
-                tau_min = taus[idx_min]
-                adev_min = allan_deviations[idx_min]
-                plt.scatter([tau_min], [adev_min], color='red', s=70, label=f'Mín Adev\nTau={tau_min:.2f}s\nAdev={adev_min:.2f}Hz', zorder=5)
-                plt.legend(fontsize=10)
-                plt.annotate(f'Mín:\nTau={tau_min:.2f}s\nAdev={adev_min:.2f}Hz',
-                             xy=(tau_min, adev_min), xytext=(0.05, 0.98),
-                             textcoords='axes fraction', ha='left', va='top',
-                             fontsize=10, color='red',
-                             bbox=dict(facecolor='white', alpha=0.45, edgecolor='red'))
-                plt.tight_layout()
-                plt.show()
                 self.dev.write('DISP:ENAB ON')             # Apaga display para máxima velocidad
-            return frecuencias, timestamps, delta_tiempos, allan_deviations, taus
-            
+            return frecuencias, timestamps, delta_tiempos
+    
         except Exception as e:
             print(f"Error procesando los datos: {str(e)}")
-            return None, None, None, None, None
+            return None, None, None
 
     
-# VERSION POSIBLEMENTE DEFINITIVA
 
-    def medir_n_muestras_equidistantesV6(
+
+# Version v6 pero con capacidad para configurar la medida
+
+    def medir_n_muestras_equidistantesV7(
             self,
             n_muestras=100,
-            intervalo_s=0.2,
+            intervalo_s=0.2,  # 4ms = 0.004s de mín recomendable ,  20 ns a 1000 s.
             canal='A',
             graficarFT=True,
             graficarDevTau=True,
-            exportar_excel=True
+            exportar_excel=True,
+            configurar=False,
+            impedancia=None,      # '50' (ohmios) o '1M' (megaohm)
+            acoplamiento=None,    # 'DC', 'AC', 'HF', 'LF'
+            atenuacion=None,      # '0' (0dB, por defecto) o '10' (10dB típico para señales grandes) 
+            filtro=None,          # 'ON', 'OFF'
+            triger_level=None,    # valor en voltios, e.g., 0.5
+            triger_slope=None     # 'POS' (subida), 'NEG' (bajada)
         ):
         """
-        Versión definitiva: Exporta a un solo Excel (.xlsx) dos hojas, una para datos crudos frecuencia/tiempo y otra para Allan deviation/Tau.
+        Versión clásica y robusta con espera por time.sleep().
+        Permite configurar impedancia, acoplamiento, atenuación, filtro, trigger level y trigger slope.
         """
         import time
         import numpy as np
@@ -756,10 +765,27 @@ class CNT_frequenciometro:
         if ch not in canales:
             raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
         canal_cmd = canales[ch]
+        canal_num = '1' if ch in ['A', '1'] else '2'   # para los comandos INP1, INP2, etc.
     
         # ========== SECCIÓN 2: Configuración del instrumento ==========
         self.dev.write('*RST')
         self.dev.write("*CLS")
+    
+        # ======= SECCIÓN 2.1: Configuración extra por usuario =======
+        if configurar:
+            if impedancia in ['50', '1M']:
+                self.dev.write(f'INP{canal_num}:IMP {impedancia}')  # Ej: INP1:IMP 50
+            if acoplamiento in ['DC', 'AC', 'HF', 'LF']:
+                self.dev.write(f'INP{canal_num}:COUP {acoplamiento}')  # Ej: INP1:COUP AC
+            if atenuacion in ['0', '10']:
+                self.dev.write(f'INP{canal_num}:ATT {atenuacion}')  # Ej: INP1:ATT 10
+            if filtro in ['ON', 'OFF']:
+                self.dev.write(f'INP{canal_num}:FILT {filtro}')     # Ej: INP1:FILT ON
+            if triger_level is not None:
+                self.dev.write(f'TRIG{canal_num}:LEV {triger_level}')  # Ej: TRIG1:LEV 0.5
+            if triger_slope in ['POS', 'NEG']:
+                self.dev.write(f'TRIG{canal_num}:SLOP {triger_slope}') # Ej: TRIG1:SLOP POS
+    
         self.dev.write('CAL:INT:AUTO OFF')
         self.dev.write('DISP:ENAB OFF')
         self.dev.write(f'CONF:FREQ {canal_cmd}')
@@ -767,18 +793,31 @@ class CNT_frequenciometro:
         self.dev.write(f'ARM:COUN {n_muestras}')
         self.dev.write('FORM:TINF ON')
     
-    
-        # ========== SECCIÓN 3: Lanzamiento de adquisición ==========
+        # ========== SECCIÓN 3: Lanzamiento de adquisición y espera clásica ==========
         self.dev.write('INIT')
-        tiempo_espera = intervalo_s * n_muestras * 1.1
+        # Modelo combinado + margen del 10%, con casos especiales y tiempo mínimo de 0.2s
+        eps = 1e-12
+        T = intervalo_s
+        N = n_muestras
+        if abs(T - 4e-5) < eps and N == 2400:
+            tiempo_espera = 0.25
+        elif abs(T - 4e-4) < eps and N == 1000:
+            tiempo_espera = 0.8
+        else:
+            raw = 2 * T**0.88 * N**0.85
+            lin = 1.14 * T * N
+            val = max(raw, lin)
+            tiempo_espera = max(0.2, val) * 1.1
         time.sleep(tiempo_espera)
     
         # ========== SECCIÓN 4: Recuperación y procesamiento de los datos ==========
         self.dev.write('FETC:ARR? MAX')
         data = self.dev.read()
+        valores = [float(val) for val in data.strip().split(',') if val]
+        if len(valores) < 2 * n_muestras:
+            print(f"¡Advertencia! Recibidas menos muestras ({len(valores)//2}) de las solicitadas ({n_muestras}).")
     
         try:
-            valores = [float(val) for val in data.strip().split(',') if val]
             frecuencias = np.array(valores[::2])
             timestamps = np.array(valores[1::2])
             delta_tiempos = timestamps - timestamps[0]
@@ -811,7 +850,6 @@ class CNT_frequenciometro:
                     f"{now:%S}sec_{now:%M}min_{now:%H}hour_{now:%Y}year.xlsx"
                 )
     
-                # Datos crudos
                 raw_data = {
                     "Muestra": [f"Muestra{i}" for i in range(len(frecuencias))],
                     "Frecuencia [Hz]": np.round(frecuencias, 6),
@@ -819,16 +857,12 @@ class CNT_frequenciometro:
                     "Delta_tiempo [s]": np.round(delta_tiempos, 6)
                 }
                 df_raw = pd.DataFrame(raw_data)
-    
-                # Allan deviation
                 allan_data = {
                     "DATO": [f"DATO{i}" for i in range(len(allan_deviations))],
                     "AllanDeviation [Hz]": np.round(allan_deviations, 6),
                     "Tau [s]": np.round(taus, 6)
                 }
                 df_allan = pd.DataFrame(allan_data)
-    
-                # Guardar ambos DataFrames en un único Excel (dos hojas)
                 with pd.ExcelWriter(nombre_excel) as writer:
                     df_raw.to_excel(writer, sheet_name='Datos Frecuencia', index=False, float_format="%.6f")
                     df_allan.to_excel(writer, sheet_name='Allan Deviation', index=False, float_format="%.6f")
@@ -895,27 +929,148 @@ class CNT_frequenciometro:
         except Exception as e:
             print(f"Error procesando los datos: {str(e)}")
             return None, None, None, None, None
+    
+    
 
-    def consultar_numero_muestras(self):
+
+
+
+
+
+
+# Probar a verr si va mejor que block measurament
+
+
+    def continuous_measurament_v31(self, n_muestras=100, intervalo_s=0.2, canal='A', graficarFT=True, exportar_excel=True):
         """
-        Consulta el número actual de muestras configurado en el instrumento.
-        
-        Comandos SCPI utilizados:
-            :CALC:AVER:COUN:CURR? (Calculate Average Count Current Query)
-            - Descripción: Consulta el número actual de muestras configurado
-            - Retorna: El número de muestras configurado como string
-        
-        Retorna:
-            int: Número de muestras configurado actualmente
-            None: Si ocurre algún error al leer el valor
+        Medición continua: inicia la medición en modo continuo, espera el tiempo necesario,
+        hace un ABORT, luego recupera exactamente n_muestras.
+        Exporta a Excel (.xlsx) y puede graficar si se desea.
         """
+        import time
+        import numpy as np
+    
+        # ========== SECCIÓN 1: Validación y selección de canal ==========
+        canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
+        ch = str(canal).upper()
+        if ch not in canales:
+            raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
+        canal_cmd = canales[ch]
+    
+        # ========== SECCIÓN 2: Configuración mínima del instrumento ==========
+        self.dev.write('*RST')
+        self.dev.write("*CLS")
+        self.dev.write('CAL:INT:AUTO OFF')
+        self.dev.write('DISP:ENAB OFF')
+        self.dev.write(f'CONF:FREQ {canal_cmd}')
+        self.dev.write(f'SENS:ACQ:APER {intervalo_s}')  # Tiempo de apertura por muestra
+        self.dev.write("ARM:COUNT INF")
+        self.dev.write('ARM:CONT ON')  # ARM Continuous mode ON (medición continua)
+        self.dev.write('FORM:TINF ON')  # Formato con timestamps
+    
+        # ========== SECCIÓN 3: Lanzamiento de medición continua ==========
+        self.dev.write('INIT')
+        # Espera suficiente para recoger todas las muestras + margen
+        # Modelo combinado + margen del 10%, con casos especiales y tiempo mínimo de 0.2s
+        eps = 1e-12
+        T = intervalo_s
+        N = n_muestras
+        if abs(T - 4e-5) < eps and N == 2400:
+            tiempo_espera = 0.25
+        elif abs(T - 4e-4) < eps and N == 1000:
+            tiempo_espera = 0.8
+        else:
+            raw = 2 * T**0.88 * N**0.85
+            lin = 1.14 * T * N
+            val = max(raw, lin)
+            tiempo_espera = max(0.2, val) * 1.1
+        time.sleep(tiempo_espera)
+        
+        
+        
+        
+        
+    
+        # ========== SECCIÓN 4: Abortamos y recuperamos muestras ==========
+        self.dev.write('ABOR')  # Aborta la medición continua
+        self.dev.write(f'FETC:ARR? {n_muestras}')  # Recupera sólo n_muestras
+    
+        data = self.dev.read()
+    
         try:
-            self.dev.write(':CALC:AVER:COUN:CURR?')
-            resp = self.dev.read()
-            return int(float(resp))
+            # Convertir la respuesta en una lista de valores
+            valores = [float(val) for val in data.strip().split(',') if val]
+    
+            if len(valores) < 2 * n_muestras:
+                print(f"¡Advertencia! Recibidas menos muestras ({len(valores)//2}) de las solicitadas ({n_muestras}).")
+    
+            # Separar frecuencias y timestamps
+            frecuencias = np.array(valores[::2])  # Valores en posiciones pares
+            timestamps = np.array(valores[1::2])  # Valores en posiciones impares
+    
+            # Calcular delta_tiempos (tiempos relativos al primer valor)
+            delta_tiempos = timestamps - timestamps[0]
+    
+            # ========== SECCIÓN 5: Visualización de resultados ==========
+            if graficarFT:
+                import matplotlib.pyplot as plt
+                from matplotlib.ticker import MaxNLocator
+    
+                maximo = np.max(frecuencias)
+                minimo = np.min(frecuencias)
+                media = np.mean(frecuencias)
+                mediana = np.median(frecuencias)
+                n_puntos = len(frecuencias)
+    
+                plt.figure(figsize=(9, 5))
+                plt.plot(delta_tiempos, frecuencias, marker='o', linestyle='-', label='Frecuencia')
+                plt.xlabel('Tiempo [s]', fontsize=12)
+                plt.ylabel('Frecuencia [Hz]', fontsize=12)
+                plt.title('Frecuencia vs Tiempo')
+                plt.grid(True, which='both', linestyle='--', alpha=0.5)
+                plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+    
+                texto_stats = (f"Máx: {maximo:.3f} Hz\n"
+                               f"Mín: {minimo:.3f} Hz\n"
+                               f"Media: {media:.3f} Hz\n"
+                               f"Mediana: {mediana:.3f} Hz\n"
+                               f"Nº puntos: {n_puntos}")
+                plt.gca().text(0.98, 0.02, texto_stats, fontsize=10,
+                               ha='right', va='bottom', transform=plt.gca().transAxes,
+                               bbox=dict(facecolor='white', alpha=0.7, edgecolor='gray'))
+                plt.tight_layout()
+                plt.show()
+    
+            # ========== SECCIÓN 6: Guardar en Excel (.xlsx) ==========
+            if exportar_excel:
+                import pandas as pd
+                from datetime import datetime
+    
+                fecha_hora = datetime.now().strftime("%S_%M_%H_%d_%m_%Y")
+                raw_data = {
+                    "Muestra": [f"Muestra{i}" for i in range(len(frecuencias))],
+                    "Frecuencia [Hz]": np.round(frecuencias, 6),
+                    "Timestamp [s]": np.round(timestamps, 2),
+                    "Delta_tiempo [s]": np.round(delta_tiempos, 2)
+                }
+                df_raw = pd.DataFrame(raw_data)
+                nombre_raw = f"RawDataFreqYTiempo_CONT_{fecha_hora}.xlsx"
+                df_raw.to_excel(nombre_raw, index=False, float_format="%.6f")
+                print(f"Archivo de datos crudos guardado como: {nombre_raw}")
+    
+            self.dev.write('DISP:ENAB ON')  # Reactiva display al acabar
+    
+            return frecuencias, timestamps, delta_tiempos
+    
         except Exception as e:
-            print(f"Error al consultar número de muestras: {str(e)}")
-            return None
+            print(f"Error procesando los datos: {str(e)}")
+            return None, None, None
+
+
+
+
+
+
 
     def leer_adev_cnt91(self):
         """
@@ -1157,6 +1312,9 @@ class CNT_frequenciometro:
         except Exception as e:
             print(f"Error al leer ADEV: {str(e)}")
             return None
+
+
+
 
     def calcular_adev(self, canal='A'):
         """

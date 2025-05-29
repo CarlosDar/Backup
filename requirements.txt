@@ -1,0 +1,5 @@
+pyvisa>=1.11.3
+numpy>=1.21.0
+pandas>=1.3.0
+matplotlib>=3.4.0
+openpyxl>=3.0.7  # For Excel support 
