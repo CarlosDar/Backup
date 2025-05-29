@@ -1158,7 +1158,7 @@ class CNT_frequenciometro:
             print(f"Error al leer ADEV: {str(e)}")
             return None
 
-    def calcular_adev_y_media(self, canal='A'):
+    def calcular_adev(self, canal='A'):
         """
         Calcula la Allan deviation (ADEV) y el valor medio de las mediciones.
         Sigue la estructura de comandos SCPI del manual del CNT-91.
@@ -1347,3 +1347,188 @@ class CNT_frequenciometro:
         except Exception as e:
             print(f"Error al calcular ADEV y media: {str(e)}")
             return None, None
+
+    def muestreo_adev_improved2(
+        self,
+        n_bloques=5,
+        muestras_por_bloque=100,
+        pacing_time_ms=20,
+        canal='A'
+    ):
+        """
+        Realiza múltiples muestreos estadísticos de frecuencia y obtiene ADEV, media, SDEV, min y max para cada bloque.
+        
+        Nota sobre la adquisición de datos:
+        Para cada bloque de muestreo:
+        1. Se toman 'muestras_por_bloque' mediciones de frecuencia
+        2. El instrumento calcula internamente:
+           - ADEV: Un único valor de Allan deviation para todo el bloque
+           - Media: Valor medio de todas las muestras del bloque
+           - SDEV: Desviación estándar de todas las muestras del bloque
+           - Min: Valor mínimo de todas las muestras del bloque
+           - Max: Valor máximo de todas las muestras del bloque
+        
+        Ejemplo de adquisición para un bloque:
+        Si muestras_por_bloque = 100:
+        - Se toman 100 mediciones de frecuencia
+        - Se obtiene 1 valor de ADEV para las 100 muestras
+        - Se obtienen media, SDEV, min y max de las 100 muestras
+        
+        Parámetros:
+            n_bloques (int): Número de bloques de muestreo a realizar
+                - Default: 5
+                - Descripción: Número de veces que se repetirá el muestreo completo
+                - Ejemplo: Si n_bloques=3, se obtendrán 3 conjuntos de estadísticas
+            
+            muestras_por_bloque (int): Número de muestras por cada bloque
+                - Default: 100
+                - Descripción: Número de mediciones que se realizarán en cada bloque
+                - Nota: El número real puede ser mayor si no es múltiplo del trigger
+                - Ejemplo: Si muestras_por_bloque=50, cada bloque tendrá 50 mediciones
+            
+            pacing_time_ms (int): Tiempo entre muestras en milisegundos
+                - Default: 20
+                - Descripción: Intervalo de tiempo entre mediciones consecutivas
+                - Ejemplo: Si pacing_time_ms=20, habrá 20ms entre cada medición
+            
+            canal (str o int): Canal de medida
+                - Valores posibles: 'A', 'B', 1 o 2
+                - Default: 'A'
+                - Descripción: Especifica el canal a utilizar para la medición
+        
+        Comandos SCPI utilizados:
+            1. :CALC:AVER:STAT ON
+               - Descripción: Activa el cálculo estadístico
+               - Efecto: Habilita el procesamiento estadístico de las muestras
+            
+            2. :CALC:TYPE ADEV
+               - Descripción: Configura el tipo de cálculo como Allan deviation
+               - Efecto: El instrumento calculará la Allan deviation de las muestras
+            
+            3. :CALC:AVER:COUN
+               - Descripción: Configura el número de muestras para el cálculo
+               - Efecto: Define cuántas mediciones se realizarán en cada bloque
+            
+            4. :TRIG:TIM
+               - Descripción: Configura el intervalo entre muestras
+               - Efecto: Establece el tiempo de espera entre mediciones consecutivas
+            
+            5. :INIT
+               - Descripción: Inicia la medición
+               - Efecto: Comienza la adquisición de muestras
+            
+            6. :CALC:AVER:ALL?
+               - Descripción: Obtiene media, SDEV, min y max
+               - Retorna: String con los valores separados por comas
+               - Formato: "media,sdev,min,max"
+            
+            7. :CALC:DATA?
+               - Descripción: Obtiene el valor de ADEV
+               - Retorna: String con los valores de ADEV
+               - Formato: "tipo,valor" donde tipo es el tipo de cálculo (ADEV)
+        
+        Retorna:
+            list: Lista de diccionarios con los resultados de cada bloque
+                Cada diccionario contiene:
+                - 'bloque': número de bloque (1 a n_bloques)
+                - 'adev': valor de Allan deviation calculado para el bloque
+                - 'media': valor medio de todas las muestras del bloque
+                - 'sdev': desviación estándar de todas las muestras del bloque
+                - 'min': valor mínimo de todas las muestras del bloque
+                - 'max': valor máximo de todas las muestras del bloque
+                Si ocurre algún error, retorna lista vacía
+        
+        Ejemplo de uso:
+            resultados = cnt.muestreo_adev_improved2(
+                n_bloques=3,
+                muestras_por_bloque=50,
+                pacing_time_ms=20,
+                canal='A'
+            )
+            # resultados será una lista de 3 diccionarios, uno por cada bloque
+            # Cada diccionario tendrá los valores estadísticos de sus 50 muestras
+        """
+        try:
+            # ========== SECCIÓN 1: Validación y selección de canal ==========
+            canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
+            ch = str(canal).upper()
+            if ch not in canales:
+                raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
+            canal_cmd = canales[ch]
+            
+            resultados = []
+            
+            # ========== SECCIÓN 2: Bucle principal para cada bloque ==========
+            for bloque in range(n_bloques):
+                print(f"\nIniciando bloque {bloque + 1} de {n_bloques}")
+                
+                # 1. Resetear y limpiar
+                self.dev.write('*RST')
+                self.dev.write('*CLS')
+                
+                # 2. Configurar canal
+                self.dev.write(f':CONF:FREQ {canal_cmd}')
+                
+                # 3. Configurar parámetros de medición
+                self.dev.write(':CALC:AVER:STAT ON')
+                self.dev.write(':CALC:TYPE ADEV')
+                self.dev.write(f':CALC:AVER:COUN {muestras_por_bloque}')
+                self.dev.write(f':TRIG:TIM {pacing_time_ms}ms')
+                
+                # 4. Iniciar medición
+                self.dev.write(':INIT')
+                
+                # 5. Mostrar progreso
+                muestra_anterior = 0
+                while True:
+                    self.dev.write(':CALC:AVER:COUN:CURR?')
+                    muestra_actual = int(float(self.dev.read()))
+                    
+                    if muestra_actual != muestra_anterior:
+                        print(f"\rMuestra {muestra_actual} de {muestras_por_bloque}", end='', flush=True)
+                        muestra_anterior = muestra_actual
+                    
+                    if muestra_actual >= muestras_por_bloque:
+                        print()  # Nueva línea al terminar
+                        break
+                        
+                    time.sleep(0.1)
+                
+                # 6. Obtener estadísticas completas
+                # :CALC:AVER:ALL? devuelve "media,sdev,min,max"
+                self.dev.write(':CALC:AVER:ALL?')
+                resp_stats = self.dev.read()
+                try:
+                    stats = [float(val) for val in resp_stats.strip().split(',') if val]
+                    media, sdev, min_val, max_val = stats
+                except Exception:
+                    media = sdev = min_val = max_val = None
+                
+                # 7. Obtener ADEV
+                # :CALC:DATA? devuelve "tipo,valor" donde tipo es ADEV
+                self.dev.write(':CALC:DATA?')
+                resp_adev = self.dev.read()
+                try:
+                    valores = [float(val) for val in resp_adev.strip().split(',') if val]
+                    adev = valores[1] if len(valores) > 1 else None
+                except Exception:
+                    adev = None
+                
+                # 8. Almacenar resultados
+                resultados.append({
+                    'bloque': bloque + 1,
+                    'adev': adev,
+                    'media': media,
+                    'sdev': sdev,
+                    'min': min_val,
+                    'max': max_val
+                })
+                
+                # 9. Desactivar estadísticas
+                self.dev.write(':CALC:AVER:STAT OFF')
+            
+            return resultados
+            
+        except Exception as e:
+            print(f"Error en muestreo ADEV: {str(e)}")
+            return []
