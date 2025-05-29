@@ -1353,6 +1353,7 @@ class CNT_frequenciometro:
         n_bloques=5,
         muestras_por_bloque=100,
         pacing_time_ms=20,
+        intervalo_s=0.1,
         canal='A'
     ):
         """
@@ -1376,25 +1377,37 @@ class CNT_frequenciometro:
         
         Parámetros:
             n_bloques (int): Número de bloques de muestreo a realizar
+                - Rango: 1 a 1000
                 - Default: 5
                 - Descripción: Número de veces que se repetirá el muestreo completo
                 - Ejemplo: Si n_bloques=3, se obtendrán 3 conjuntos de estadísticas
             
             muestras_por_bloque (int): Número de muestras por cada bloque
+                - Rango: 2 a 1000000
                 - Default: 100
                 - Descripción: Número de mediciones que se realizarán en cada bloque
                 - Nota: El número real puede ser mayor si no es múltiplo del trigger
                 - Ejemplo: Si muestras_por_bloque=50, cada bloque tendrá 50 mediciones
             
             pacing_time_ms (int): Tiempo entre muestras en milisegundos
+                - Rango: 1 a 1000000 ms
                 - Default: 20
                 - Descripción: Intervalo de tiempo entre mediciones consecutivas
                 - Ejemplo: Si pacing_time_ms=20, habrá 20ms entre cada medición
+            
+            intervalo_s (float): Tiempo de apertura en segundos
+                - Rango: 0.000001 a 1000 s
+                - Default: 0.1
+                - Descripción: Tiempo durante el cual se realiza cada medición individual
+                - Ejemplo: Si intervalo_s=0.1, cada medición durará 0.1 segundos
+                - Nota: Este es el tiempo de integración para cada medición
             
             canal (str o int): Canal de medida
                 - Valores posibles: 'A', 'B', 1 o 2
                 - Default: 'A'
                 - Descripción: Especifica el canal a utilizar para la medición
+                - 'A' o 1: Canal A
+                - 'B' o 2: Canal B
         
         Comandos SCPI utilizados:
             1. :CALC:AVER:STAT ON
@@ -1413,16 +1426,20 @@ class CNT_frequenciometro:
                - Descripción: Configura el intervalo entre muestras
                - Efecto: Establece el tiempo de espera entre mediciones consecutivas
             
-            5. :INIT
+            5. :SENS:ACQ:APER
+               - Descripción: Configura el tiempo de apertura
+               - Efecto: Define el tiempo de integración para cada medición individual
+            
+            6. :INIT
                - Descripción: Inicia la medición
                - Efecto: Comienza la adquisición de muestras
             
-            6. :CALC:AVER:ALL?
+            7. :CALC:AVER:ALL?
                - Descripción: Obtiene media, SDEV, min y max
                - Retorna: String con los valores separados por comas
                - Formato: "media,sdev,min,max"
             
-            7. :CALC:DATA?
+            8. :CALC:DATA?
                - Descripción: Obtiene el valor de ADEV
                - Retorna: String con los valores de ADEV
                - Formato: "tipo,valor" donde tipo es el tipo de cálculo (ADEV)
@@ -1443,6 +1460,7 @@ class CNT_frequenciometro:
                 n_bloques=3,
                 muestras_por_bloque=50,
                 pacing_time_ms=20,
+                intervalo_s=0.1,
                 canal='A'
             )
             # resultados será una lista de 3 diccionarios, uno por cada bloque
@@ -1474,6 +1492,7 @@ class CNT_frequenciometro:
                 self.dev.write(':CALC:TYPE ADEV')
                 self.dev.write(f':CALC:AVER:COUN {muestras_por_bloque}')
                 self.dev.write(f':TRIG:TIM {pacing_time_ms}ms')
+                self.dev.write(f'SENS:ACQ:APER {intervalo_s}')
                 
                 # 4. Iniciar medición
                 self.dev.write(':INIT')
@@ -1532,3 +1551,5 @@ class CNT_frequenciometro:
         except Exception as e:
             print(f"Error en muestreo ADEV: {str(e)}")
             return []
+        
+        ##### importante probar que haria el pacing_time_ms "    self.dev.write(':TRIG:TIM 20ms')   en la funcion v31" 
