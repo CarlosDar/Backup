@@ -1065,14 +1065,13 @@ class CNT_frequenciometro:
         except Exception as e:
             print(f"Error procesando los datos: {str(e)}")
             return None, None, None
-
-
-
-
-
-
-
-    def leer_adev_cnt91(self):
+    
+    
+    
+    
+### LEER EL ADEV ESTADISTICO
+        
+    def leer_adev_cnt91(self,):
         """
         Extrae la Allan deviation (ADEV) calculada internamente por el CNT-91
         para la última adquisición realizada.
@@ -1087,6 +1086,13 @@ class CNT_frequenciometro:
             # 2. Limpiar errores previos para evitar problemas durante la medición
             self.dev.write("*CLS")
             
+            
+            
+            #self.dev.write(f':TRIG:TIM {pacing_time}ms') 
+            #self.dev.write(f'SENS:ACQ:APER {intervalo_s}')  # Tiempo de apertura por muestra
+           
+                
+                
             # 3. Configurar y activar el cálculo estadístico
             self.dev.write(':CALC:AVER:STAT ON')
             self.dev.write(':CALC:AVER:TYPE ADEV')
@@ -1104,7 +1110,7 @@ class CNT_frequenciometro:
             # 6. Procesar la respuesta
             try:
                 valores = [float(val) for val in resp_adev.strip().split(',') if val]
-                Allan_Deviation = valores[1] if len(valores) > 1 else None
+                Allan_Deviation = valores[0] if len(valores) >= 1 else None
             except Exception:
                 Allan_Deviation = None
             
@@ -1115,118 +1121,17 @@ class CNT_frequenciometro:
             
         except Exception as e:
             print(f"Error al leer ADEV: {str(e)}")
-            return None
+            return None 
+        
+        
+        
+    
 
-    def leer_adev_cnt91_improved2(self, no_samples=100, pacing_state=False, pacing_time=20, canal='A'):
-        """
-        Versión mejorada 2 de la función para extraer la Allan deviation (ADEV) del CNT-91.
-        Sigue la estructura correcta de comandos SCPI para cálculos estadísticos.
+    
+    
+    def calcular_adev_y_estadisticas(self, canal='A',N_muestras = 100, intervalo_captura=0.2, pacing_time=None):
         
-        Nota sobre el cálculo de Allan deviation en el CNT-91:
-        El instrumento calcula la Allan deviation internamente usando la fórmula:
-        σ²(τ) = 1/[2(N-2m)] * Σ[yₖ₊₂ₘ - 2yₖ₊ₘ + yₖ]²
-        
-        Donde:
-        - τ: tiempo de observación
-        - N: número total de muestras
-        - m: número de muestras en cada grupo
-        - yₖ: mediciones de frecuencia
-        
-        El CNT-91:
-        1. Toma las muestras configuradas
-        2. Las agrupa internamente para diferentes valores de τ
-        3. Calcula la Allan deviation para cada τ
-        4. Devuelve los resultados al solicitar :CALC:DATA?
-        
-        Nota importante sobre el número de muestras:
-        El instrumento requiere que el número de muestras sea un múltiplo del número
-        de medidas que puede hacer el trigger. Por ejemplo, si el trigger está configurado
-        para 1000 medidas y pedimos 9500 muestras, el instrumento hará 10000 medidas
-        (el múltiplo de 1000 más cercano a 9500).
-        
-        Parámetros:
-            no_samples (int): Número de muestras para el cálculo
-                - Rango: 2 a 1000000
-                - Default: 100
-                - Descripción: Define cuántas mediciones individuales se realizarán para el cálculo de la Allan deviation.
-                  Un mayor número de muestras proporciona mayor precisión en el cálculo.
-                  Nota: El número real de muestras puede ser mayor si no es múltiplo del trigger.
-            
-            pacing_state (bool): Estado del pacing
-                - Valores posibles: True/False
-                - Default: False
-                - Descripción: Controla si las mediciones se realizan con un intervalo fijo (True)
-                  o inmediatamente una tras otra (False)
-            
-            pacing_time (int): Tiempo de pacing en milisegundos
-                - Rango: 1 a 1000000 ms
-                - Default: 20
-                - Descripción: Define el intervalo de tiempo entre mediciones cuando pacing_state es True.
-                  Solo tiene efecto si pacing_state es True.
-            
-            canal (str o int): Canal de medida
-                - Valores posibles: 'A', 'B', 1 o 2
-                - Default: 'A'
-                - Descripción: Especifica el canal a utilizar para la medición
-                  - 'A' o 1: Canal A
-                  - 'B' o 2: Canal B
-        
-        Comandos SCPI utilizados:
-            1. *RST (Reset)
-               - Descripción: Restablece el instrumento a su estado predeterminado
-               - Efecto: Borra todas las configuraciones personalizadas
-            
-            2. *CLS (Clear Status)
-               - Descripción: Borra el registro de errores y eventos
-               - Efecto: Limpia el buffer de errores para evitar interferencias
-            
-            3. :CONF:FREQ (Configure Frequency)
-               - Descripción: Configura la medición de frecuencia
-               - Sintaxis: :CONF:FREQ (@1) o :CONF:FREQ (@2)
-               - Efecto: Prepara el instrumento para medir frecuencia
-            
-            4. :CALC:AVER:COUN (Calculate Average Count)
-               - Descripción: Configura el número de muestras para el cálculo
-               - Sintaxis: :CALC:AVER:COUN <número>
-               - Efecto: Define cuántas mediciones se realizarán para el cálculo estadístico
-               - Nota: El número real de muestras puede ser mayor si no es múltiplo del trigger
-            
-            5. :TRIG:TIM (Trigger Timer)
-               - Descripción: Configura el intervalo de tiempo entre mediciones
-               - Sintaxis: :TRIG:TIM <tiempo>ms
-               - Efecto: Define el espaciado temporal entre mediciones
-            
-            6. :TRIG:SOUR (Trigger Source)
-               - Descripción: Selecciona la fuente de trigger
-               - Valores: 'IMM' (inmediato) o 'TIM' (timer)
-               - Efecto: Controla cómo se inician las mediciones
-            
-            7. :CALC:STAT (Calculate Statistics)
-               - Descripción: Activa/desactiva el cálculo estadístico
-               - Valores: ON/OFF
-               - Efecto: Habilita el procesamiento estadístico de los datos
-            
-            8. :CALC:TYPE (Calculate Type)
-               - Descripción: Define el tipo de cálculo estadístico
-               - Valor: 'ADEV' para Allan deviation
-               - Efecto: Especifica que se calcule la Allan deviation
-            
-            9. :INIT (Initialize)
-               - Descripción: Inicia la medición
-               - Efecto: Comienza el proceso de adquisición de datos
-            
-            10. *OPC? (Operation Complete Query)
-                - Descripción: Consulta si la operación ha terminado
-                - Efecto: Espera a que se complete la medición actual
-            
-            11. :CALC:DATA? (Calculate Data Query)
-                - Descripción: Solicita los datos calculados (DEBE usarse para operaciones estadísticas)
-                - Efecto: Obtiene los resultados del análisis estadístico
-        
-        Retorna:
-            Allan_Deviation: float
-                Allan deviation interna (o None si ocurre algún error)
-        """
+        import time
         try:
             # ========== SECCIÓN 1: Validación y selección de canal ==========
             canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
@@ -1235,229 +1140,78 @@ class CNT_frequenciometro:
                 raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
             canal_cmd = canales[ch]
             
-            # 1. Resetear el instrumento para asegurar estado limpio
-            # *RST - Restablece el instrumento a su estado predeterminado
-            self.dev.write('*RST')
-            
-            # 2. Limpiar errores previos
-            # *CLS - Borra el registro de errores
-            self.dev.write("*CLS")
-            
-            # 3. Configurar parámetros de medición
-            # :CONF:FREQ - Configura la medición de frecuencia
-            self.dev.write(f':CONF:FREQ {canal_cmd}')
-            
-            # :CALC:AVER:COUN - Configura el número de muestras para el cálculo
-            self.dev.write(f':CALC:AVER:COUN {no_samples}')
-            
-            # :TRIG:TIM - Configura el tiempo de pacing en milisegundos
-            self.dev.write(f':TRIG:TIM {pacing_time}ms')
-            
-            # :TRIG:SOUR - Configura la fuente de trigger
-            if pacing_state:
-                self.dev.write(':TRIG:SOUR TIM')  # TIM - Timer trigger
-            else:
-                self.dev.write(':TRIG:SOUR IMM')  # IMM - Immediate trigger
-            
-            # 4. Configurar y activar el cálculo estadístico
-            # :CALC:STAT - Activa/desactiva el cálculo estadístico
-            self.dev.write(':CALC:STAT ON')
-            # :CALC:TYPE - Define el tipo de cálculo estadístico (ADEV)
-            self.dev.write(':CALC:TYPE ADEV')
-            
-            # 5. Iniciar la medición y esperar a que complete
-            # :INIT - Inicia la medición
-            self.dev.write(':INIT')
-            
-            # Bucle para mostrar el progreso de las muestras
-            import time
-            muestra_anterior = 0
-            while True:
-                self.dev.write(':CALC:AVER:COUN:CURR?')
-                muestra_actual = int(float(self.dev.read()))
-                
-                # Solo mostrar si el número de muestra ha cambiado
-                if muestra_actual != muestra_anterior:
-                    print(f"\rMuestra {muestra_actual} de {no_samples}", end='', flush=True)
-                    muestra_anterior = muestra_actual
-                
-                if muestra_actual >= no_samples:
-                    print()  # Nueva línea al terminar
-                    break
-                    
-                time.sleep(0.1)  # Pequeña pausa para no saturar el bus
-            
-            # *OPC? - Consulta si la operación ha terminado
-            self.dev.write('*OPC?')
-            self.dev.read()  # Esperar a que complete
-            
-            # 6. Obtener los datos calculados
-            # :CALC:DATA? - Solicita los datos calculados (DEBE usarse para operaciones estadísticas)
-            self.dev.write(':CALC:DATA?')
-            resp_adev = self.dev.read()
-            print("Valor bruto de ADEV:", resp_adev)
-        
-            # 7. Procesar la respuesta
-            try:
-                valores = [float(val) for val in resp_adev.strip().split(',') if val]
-                Allan_Deviation = valores[1] if len(valores) > 1 else None
-            except Exception:
-                Allan_Deviation = None
-            
-            # 8. Desactivar el cálculo estadístico al terminar
-            self.dev.write(':CALC:STAT OFF')
-        
-            return Allan_Deviation
-            
-        except Exception as e:
-            print(f"Error al leer ADEV: {str(e)}")
-            return None
-
-
-
-
-    def calcular_adev(self, canal='A'):
-        """
-        Calcula la Allan deviation (ADEV) y el valor medio de las mediciones.
-        Sigue la estructura de comandos SCPI del manual del CNT-91.
-        
-        Parámetros:
-            canal (str o int): Canal de medida
-                - Valores posibles: 'A', 'B', 1 o 2
-                - Default: 'A'
-                - Descripción: Especifica el canal a utilizar para la medición
-                  - 'A' o 1: Canal A
-                  - 'B' o 2: Canal B
-        
-        Comandos SCPI utilizados:
-            1. :CALC:AVER:STAT ON
-               - Descripción: Activa el cálculo estadístico
-            
-            2. :CALC:TYPE ADEV
-               - Descripción: Configura el tipo de cálculo como Allan deviation
-            
-            3. :INIT
-               - Descripción: Inicia la medición
-            
-            4. *OPC?
-               - Descripción: Espera a que la operación se complete
-            
-            5. :CALC:DATA?
-               - Descripción: Obtiene los datos calculados (Allan deviation)
-            
-            6. :CALC:TYPE MEAN
-               - Descripción: Configura el tipo de cálculo como valor medio
-            
-            7. :CALC:IMM?
-               - Descripción: Obtiene el valor medio calculado
-        
-        Retorna:
-            tuple: (allan_deviation, valor_medio)
-                - allan_deviation: float - Valor de la Allan deviation
-                - valor_medio: float - Valor medio de las mediciones
-                Si ocurre algún error, retorna (None, None)
-        """
-        try:
-            # ========== SECCIÓN 1: Validación y selección de canal ==========
-            canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
-            ch = str(canal).upper()
-            if ch not in canales:
-                raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
-            canal_cmd = canales[ch]
-            
-            # 1. Resetear y limpiar
+            # ========== SECCIÓN 2: Resetear y limpiar instrumento ==========
             self.dev.write('*RST')
             self.dev.write('*CLS')
             
-            # 2. Configurar canal
+            # ========== SECCIÓN 3: Configuración de canal y adquisición ==========
             self.dev.write(f':CONF:FREQ {canal_cmd}')
+            self.dev.write(f'SENS:ACQ:APER  {intervalo_captura}')  # Tiempo de apertura por muestra
             
-            # 3. Activar estadísticas y configurar ADEV
+            # ========== SECCIÓN 4: Configuración de estadística ADEV ==========
             self.dev.write(':CALC:AVER:STAT ON')
             self.dev.write(':CALC:TYPE ADEV')
+            self.dev.write(f':ARM:START:COUN N_muestras')  # Número de muestras
             
-            # 4. Iniciar medición y esperar
+            if pacing_time is not None:
+                self.dev.write(f'TRIGger:SOURce TIMer')
+                self.dev.write(f':TRIG:TIM {pacing_time}') # Tiempo entre muestras
+            
+            
+            # ========== SECCIÓN 5: Iniciar medición ==========
             self.dev.write(':INIT')
             
-            # 5. Obtener Allan deviation
+            ### Esperamos a que la medición termine
+            current = 0
+            while float(current) != N_muestras:
+                self.dev.write(':CALCulate:AVERage:COUNt:CURRent?')
+                current = self.dev.read()
+            
+            
+            # ========== SECCIÓN 6: Lectura de Allan deviation ==========
             self.dev.write(':CALC:DATA?')
             resp_adev = self.dev.read()
             try:
                 valores = [float(val) for val in resp_adev.strip().split(',') if val]
-                allan_deviation = valores[1] if len(valores) > 1 else None
+                allan_deviation = valores[0] if len(valores) >= 1 else None
             except Exception:
                 allan_deviation = None
             
-            # 6. Mantener ADEV para el valor medio
-            self.dev.write(':CALC:TYPE ADEV')
-            
-            # 7. Obtener valor medio
-            self.dev.write(':CALC:IMM?')
-            resp_media = self.dev.read()
+            # ========== SECCIÓN 7: Lectura de estadísticas de media ==========
+            self.dev.write(':CALC:AVER:ALL?')
+            resp_estadisticas = self.dev.read()
             try:
-                valor_medio = float(resp_media)
+                valores = [float(val.strip()) for val in resp_estadisticas.strip().split(',') if val.strip()]
+                valor_medio       = valores[0] if len(valores) > 0 else None
+                desviacion_tipica = valores[1] if len(valores) > 1 else None
+                valor_minimo      = valores[2] if len(valores) > 2 else None
+                valor_maximo      = valores[3] if len(valores) > 3 else None
             except Exception:
-                valor_medio = None
+                valor_medio       = None
+                desviacion_tipica = None
+                valor_minimo      = None
+                valor_maximo      = None
+                
+                
             
-            # 8. Desactivar estadísticas
-            self.dev.write(':CALC:AVER:STAT OFF')
+            self.dev.write(':CALC:AVER:STAT OFF') ## QUITAR ESTA INSTRUCCIÓN SI TE INTERESA QUE SIGA MIDIENDO
             
-            return allan_deviation, valor_medio
-            
+            # ========== SECCIÓN 8: Devolver resultados ==========
+            return allan_deviation, valor_medio, desviacion_tipica, valor_minimo, valor_maximo
+    
         except Exception as e:
             print(f"Error al calcular ADEV y media: {str(e)}")
-            return None, None
+            return None, None, None, None, None
+    
+    
 
-    def calcular_adev_y_media_improved(self, canal='A'):
-        """
-        Versión mejorada que calcula la Allan deviation (ADEV) y el valor medio.
-        Sigue exactamente la estructura del manual del CNT-91:
+
+#### LA MISMA FUNCION QUE LA ANTERIOR PERO YA NO CALCULAMOS MAXIMOS Y MINIMOS, VAMOS DIRECTOS A LO QUE QUEREMOS
+#### MIRAR TFG PARA DEFINIR CON INT MAX Y INT MIN  y numero de pasos un bloque de medidas allan y que luego lo 
+#### guarde con su tau especifica de paso.
+    def calcular_adev_y_estadisticas(self, canal='A',N_muestras = 100, intervalo_captura=0.2, pacing_time=None):
         
-        Ejemplo del manual:
-        SEND :CALC:AVER:STAT ON;TYPE SDEV;:INIT;*OPC
-        Wait for operation complete
-        SEND :CALC:DATA?
-        READ <Value of standard deviation>
-        SEND :CALC:AVER:TYPE MEAN
-        SEND :CALC:IMM?
-        READ <Mean value>
-        
-        Parámetros:
-            canal (str o int): Canal de medida
-                - Valores posibles: 'A', 'B', 1 o 2
-                - Default: 'A'
-                - Descripción: Especifica el canal a utilizar para la medición
-                  - 'A' o 1: Canal A
-                  - 'B' o 2: Canal B
-        
-        Comandos SCPI utilizados:
-            1. :CALC:AVER:STAT ON
-               - Descripción: Activa el cálculo estadístico
-            
-            2. :CALC:TYPE ADEV
-               - Descripción: Configura el tipo de cálculo como Allan deviation
-            
-            3. :INIT
-               - Descripción: Inicia la medición
-            
-            4. *OPC?
-               - Descripción: Espera a que la operación se complete
-            
-            5. :CALC:DATA?
-               - Descripción: Obtiene los datos calculados (Allan deviation)
-            
-            6. :CALC:TYPE MEAN
-               - Descripción: Cambia el tipo de cálculo a valor medio
-            
-            7. :CALC:IMM?
-               - Descripción: Obtiene el valor medio calculado
-        
-        Retorna:
-            tuple: (allan_deviation, valor_medio)
-                - allan_deviation: float - Valor de la Allan deviation
-                - valor_medio: float - Valor medio de las mediciones
-                Si ocurre algún error, retorna (None, None)
-        """
+        import time
         try:
             # ========== SECCIÓN 1: Validación y selección de canal ==========
             canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
@@ -1466,248 +1220,851 @@ class CNT_frequenciometro:
                 raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
             canal_cmd = canales[ch]
             
-            # 1. Resetear y limpiar
+            # ========== SECCIÓN 2: Resetear y limpiar instrumento ==========
             self.dev.write('*RST')
             self.dev.write('*CLS')
             
-            # 2. Configurar canal
+            # ========== SECCIÓN 3: Configuración de canal y adquisición ==========
             self.dev.write(f':CONF:FREQ {canal_cmd}')
+            self.dev.write(f'SENS:ACQ:APER  {intervalo_captura}')  # Tiempo de apertura por muestra
             
-            # 3. Activar estadísticas y configurar ADEV (siguiendo el ejemplo del manual)
-            self.dev.write(':CALC:AVER:STAT ON;TYPE ADEV;:INIT;*OPC?')
-            self.dev.read()  # Esperar a que complete
+            # ========== SECCIÓN 4: Configuración de estadística ADEV ==========
+            self.dev.write(':CALC:AVER:STAT ON')
+            self.dev.write(':CALC:TYPE ADEV')
+            self.dev.write(f':ARM:START:COUN N_muestras')  # Número de muestras
             
-            # 4. Obtener Allan deviation
+            if pacing_time is not None:
+                self.dev.write(f'TRIGger:SOURce TIMer')
+                self.dev.write(f':TRIG:TIM {pacing_time}') # Tiempo entre muestras
+            
+            
+            # ========== SECCIÓN 5: Iniciar medición ==========
+            self.dev.write(':INIT')
+            
+            ### Esperamos a que la medición termine
+            current = 0
+            while float(current) != N_muestras:
+                self.dev.write(':CALCulate:AVERage:COUNt:CURRent?')
+                current = self.dev.read()
+            
+            
+            # ========== SECCIÓN 6: Lectura de Allan deviation ==========
             self.dev.write(':CALC:DATA?')
             resp_adev = self.dev.read()
             try:
                 valores = [float(val) for val in resp_adev.strip().split(',') if val]
-                allan_deviation = valores[1] if len(valores) > 1 else None
+                allan_deviation = valores[0] if len(valores) >= 1 else None
             except Exception:
                 allan_deviation = None
+       
             
-            # 5. Cambiar a cálculo de media (siguiendo el ejemplo del manual)
-            self.dev.write(':CALC:AVER:TYPE MEAN')
+            self.dev.write(':CALC:AVER:STAT OFF') ## QUITAR ESTA INSTRUCCIÓN SI TE INTERESA QUE SIGA MIDIENDO
             
-            # 6. Obtener valor medio
-            self.dev.write(':CALC:IMM?')
-            resp_media = self.dev.read()
-            try:
-                valor_medio = float(resp_media)
-            except Exception:
-                valor_medio = None
-            
-            # 7. Desactivar estadísticas
-            self.dev.write(':CALC:AVER:STAT OFF')
-            
-            return allan_deviation, valor_medio
-            
+            # ========== SECCIÓN 8: Devolver resultados ==========
+            return allan_deviation
+    
         except Exception as e:
             print(f"Error al calcular ADEV y media: {str(e)}")
-            return None, None
+            return None
 
-    def muestreo_adev_improved2(
-        self,
-        n_bloques=5,
-        muestras_por_bloque=100,
-        pacing_time_ms=20,
-        intervalo_s=0.1,
-        canal='A'
-    ):
-        """
-        Realiza múltiples muestreos estadísticos de frecuencia y obtiene ADEV, media, SDEV, min y max para cada bloque.
-        
-        Nota sobre la adquisición de datos:
-        Para cada bloque de muestreo:
-        1. Se toman 'muestras_por_bloque' mediciones de frecuencia
-        2. El instrumento calcula internamente:
-           - ADEV: Un único valor de Allan deviation para todo el bloque
-           - Media: Valor medio de todas las muestras del bloque
-           - SDEV: Desviación estándar de todas las muestras del bloque
-           - Min: Valor mínimo de todas las muestras del bloque
-           - Max: Valor máximo de todas las muestras del bloque
-        
-        Ejemplo de adquisición para un bloque:
-        Si muestras_por_bloque = 100:
-        - Se toman 100 mediciones de frecuencia
-        - Se obtiene 1 valor de ADEV para las 100 muestras
-        - Se obtienen media, SDEV, min y max de las 100 muestras
-        
-        Parámetros:
-            n_bloques (int): Número de bloques de muestreo a realizar
-                - Rango: 1 a 1000
-                - Default: 5
-                - Descripción: Número de veces que se repetirá el muestreo completo
-                - Ejemplo: Si n_bloques=3, se obtendrán 3 conjuntos de estadísticas
+
+
+
+
+
+
+
+
+
+
+#              measure_frequency
+
+"""
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+"""             
+"""
+
+try:
+    resultado = objt_prueba.measure_frequency('A')
+    print("Resultado de measure_frequency", resultado)
+except Exception as e:
+    print("Error al ejecutar measure_frequency", e)
+
+"""
+
+
+
+
+
+#             Measure_temperature_example
+
+"""
+# MIDE LA TEMPERATURA
+
+    
+    
+"""
+
+"""
+try:
+    temperatura = objt_prueba.Measure_temperature_example()
+    print("Resultado de Measure_temperature_example", temperatura)
+except Exception as t:
+    print("Error al ejecutar Measure_temperature_example", t)
+
+"""
+
+
+
+#               measure_frequency_array_CONTINUOUS    
+
+"""
+
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+ # ====== NUEVA SECCIÓN: Prueba de medida continua con try/except ======
+try:
+    if not resources:
+        raise RuntimeError("No hay recursos VISA disponibles.")
+    
+    duration = 5.0  # Duración de la prueba en segundos
+    print(f"\nIniciando medida continua durante {duration:.1f} s en canal A...")
+    freqs = objt_prueba.measure_frequency_array_CONTINUOUS(duration_s=duration, channel='A')
+
+    print(f"\nRecibidos {len(freqs)} valores:")
+    for idx, f in enumerate(freqs, start=1):
+        print(f"  #{idx}: {f:.6f} Hz")
+    if not freqs:
+        print("  ¡No se recibieron valores! Verifica la conexión y configuración.")
+
+except Exception as e:
+    print(f"Error durante la prueba de medida continua: {e}")
+    
+    
+"""
+
+
+#             medir_n_muestras_equidistantes     DELTA TIEMPOS y Tiempo de espera
+
+"""
+
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+# Parámetros de la prueba
+n_muestras = 500
+intervalo_s = 0.2
+
+# Calcular y mostrar el tiempo de espera antes de medir
+tiempo_espera = n_muestras * intervalo_s * 1.1
+
+# Conversión a formato horas:minutos:segundos
+horas = int(tiempo_espera // 3600)
+minutos = int((tiempo_espera % 3600) // 60)
+segundos = tiempo_espera % 60
+
+print(f"TIEMPO DE ESPERA ESTIMADO = {tiempo_espera:.2f} segundos "
+      f"({horas:02d}:{minutos:02d}:{segundos:05.2f} [hh:mm:ss])")
+
+# Ejecutar la medición
+resultados = objt_prueba.medir_n_muestras_equidistantes(n_muestras=n_muestras, intervalo_s=intervalo_s)
+
+# Ajustar los timestamps para restar el inicial
+if resultados and isinstance(resultados[0], tuple) and len(resultados[0]) == 2:
+    t0 = resultados[0][1]
+    resultados_rel = [(f, t - t0) for (f, t) in resultados]
+else:
+    resultados_rel = resultados  # Si el formato es inesperado, dejar igual
+
+print("Frecuencia (Hz), Delta t (s) respecto a la primera muestra:")
+for freq, dt in resultados_rel:
+    print(f"{freq:.6f}, {dt:.6f}")
+
+
+"""
+
+
+
+
+#             medir_n_muestras_equidistantes     DELTA TIEMPOS
+
+"""
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+resultados = objt_prueba.medir_n_muestras_equidistantes(n_muestras=20, intervalo_s=0.2)
+
+# Ajustar los timestamps para restar el inicial
+if resultados and isinstance(resultados[0], tuple) and len(resultados[0]) == 2:
+    t0 = resultados[0][1]
+    resultados_rel = [(f, t - t0) for (f, t) in resultados]
+else:
+    resultados_rel = resultados  # Si el formato es inesperado, dejar igual
+
+print("Frecuencia (Hz), Delta t (s) respecto a la primera muestra:")
+for freq, dt in resultados_rel:
+    print(f"{freq:.6f}, {dt:.6f}")
+
+"""
+
+
+
+#             medir_n_muestras_equidistantes     TIEMPOS
+
+
+"""
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de ======
+
+
+
+resultados = objt_prueba.medir_n_muestras_equidistantes(n_muestras=20, intervalo_s=0.2)
+print(resultados)
+
+"""
+
+
+
+
+#             medir_n_muestras_equidistantes     TIEMPOS y tiempos relativos
+
+"""
+
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+# Parámetros de la prueba
+n_muestras = 100
+
+intervalo_s = 0.2
+
+# Calcular y mostrar el tiempo de espera antes de medir
+tiempo_espera = n_muestras * intervalo_s * 1.1
+
+# Conversión a formato horas:minutos:segundos
+horas = int(tiempo_espera // 3600)
+minutos = int((tiempo_espera % 3600) // 60)
+segundos = tiempo_espera % 60
+
+print(f"TIEMPO DE ESPERA ESTIMADO = {tiempo_espera:.2f} segundos "
+      f"({horas:02d}:{minutos:02d}:{segundos:05.2f} [hh:mm:ss])")
+
+# Ejecutar la medición con la nueva función V2
+frecuencias, timestamps, delta_tiempos = objt_prueba.medir_n_muestras_equidistantesV2(n_muestras=n_muestras, intervalo_s=intervalo_s)
+
+# Mostrar los resultados en el formato solicitado
+print("\nResultados de la medición:")
+for i in range(len(frecuencias)):
+    print(f"Muestra {i+1}: {frecuencias[i]:.6f} Hz, {timestamps[i]:.6f} s, {delta_tiempos[i]:.6f} s") 
+
+"""
+
+
+
+
+
+
+
+
+#      medir_n_muestras_equidistantes     TIEMPOS y tiempos relativos y graficar F vs T
+
+"""
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+# Parámetros de la prueba
+n_muestras = 10
+
+intervalo_s = 0.2
+
+# Calcular y mostrar el tiempo de espera antes de medir
+tiempo_espera = n_muestras * intervalo_s * 1.1
+
+# Conversión a formato horas:minutos:segundos
+horas = int(tiempo_espera // 3600)
+minutos = int((tiempo_espera % 3600) // 60)
+segundos = tiempo_espera % 60
+
+print(f"TIEMPO DE ESPERA ESTIMADO = {tiempo_espera:.2f} segundos "
+      f"({horas:02d}:{minutos:02d}:{segundos:05.2f} [hh:mm:ss])")
+
+# Ejecutar la medición con la nueva función V2
+frecuencias, timestamps, delta_tiempos = objt_prueba.medir_n_muestras_equidistantesV3(n_muestras=n_muestras, intervalo_s=intervalo_s)
+
+# Mostrar los resultados en el formato solicitado
+print("\nResultados de la medición:")
+for i in range(len(frecuencias)):
+    print(f"Muestra {i+1}: {frecuencias[i]:.6f} Hz, {timestamps[i]:.6f} s, {delta_tiempos[i]:.6f} s") 
+
+
+"""
+
+
+
+
+#      medir_n_muestras_equidistantes     TIEMPOS y tiempos relativos y graficar F vs T
+# Medir ADEVS
+
+
+
+"""
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+# Parámetros de la prueba
+n_muestras = 10
+intervalo_s = 0.2
+
+# Calcular y mostrar el tiempo de espera antes de medir
+tiempo_espera = n_muestras * intervalo_s * 1.1
+
+# Conversión a formato horas:minutos:segundos
+horas = int(tiempo_espera // 3600)
+minutos = int((tiempo_espera % 3600) // 60)
+segundos = tiempo_espera % 60
+
+print(f"TIEMPO DE ESPERA ESTIMADO = {tiempo_espera:.2f} segundos "
+      f"({horas:02d}:{minutos:02d}:{segundos:05.2f} [hh:mm:ss])")
+
+# Ejecutar la medición con la nueva función V4
+frecuencias, timestamps, delta_tiempos, allan_deviations, taus = objt_prueba.medir_n_muestras_equidistantesV4(
+    n_muestras=n_muestras, intervalo_s=intervalo_s, graficarFT=True,
+)
+
+# Mostrar los resultados en el formato solicitado (con unidades)
+print("\nResultados de la medición:")
+for i in range(len(frecuencias)):
+    print(f"Muestra {i+1} : {frecuencias[i]:.6f} Hz, {timestamps[i]:.6f} s, {delta_tiempos[i]:.6f} s")
+
+print("\nDATO  : Allan deviations y Taus")
+# Mostrar los pares Allan deviation y Tau juntos y con unidades
+for i in range(len(allan_deviations)):
+    print(f"Tau {taus[i]:.3f} s: Allan deviation = {allan_deviations[i]:.6f} Hz")
+
+"""
+
+
+
+"""
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+# Parámetros de la prueba
+n_muestras = 500
+intervalo_s = 0.5
+
+# Calcular y mostrar el tiempo de espera antes de medir
+tiempo_espera = n_muestras * intervalo_s * 1.1
+
+# Conversión a formato horas:minutos:segundos
+horas = int(tiempo_espera // 3600)
+minutos = int((tiempo_espera % 3600) // 60)
+segundos = tiempo_espera % 60
+
+print(f"TIEMPO DE ESPERA ESTIMADO = {tiempo_espera:.2f} segundos "
+      f"({horas:02d}:{minutos:02d}:{segundos:05.2f} [hh:mm:ss])")
+
+# Ejecutar la medición con la nueva función V4
+frecuencias, timestamps, delta_tiempos, allan_deviations, taus = objt_prueba.medir_n_muestras_equidistantesV6(
+    n_muestras=n_muestras, intervalo_s=intervalo_s, graficarFT=True,graficarDevTau=True,
+)
+
+# Mostrar los resultados en el formato solicitado (con unidades)
+print("\nResultados de la medición:")
+for i in range(len(frecuencias)):
+    print(f"Muestra {i+1} : {frecuencias[i]:.6f} Hz, {timestamps[i]:.6f} s, {delta_tiempos[i]:.6f} s")
+
+print("\nDATOS  : Allan deviations y Taus")
+# Mostrar los pares Allan deviation y Tau juntos y con unidades
+for i in range(len(allan_deviations)):
+    print(f"Tau {taus[i]:.3f} s: Allan deviation = {allan_deviations[i]:.6f} Hz")
+
+
+
+"""
+
+
+
+
+
+#      medir_n_muestras_equidistantes     TIEMPOS y tiempos relativos y graficar F vs T
+# Medir ADEVS
+# guardar valores en excel
+
+
+
+"""
+
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+# Parámetros de la prueba
+n_muestras = 1000
+intervalo_s = 0.5
+
+# Calcular y mostrar el tiempo de espera antes de medir
+tiempo_espera = n_muestras * intervalo_s * 1.1
+
+# Conversión a formato horas:minutos:segundos
+horas = int(tiempo_espera // 3600)
+minutos = int((tiempo_espera % 3600) // 60)
+segundos = tiempo_espera % 60
+
+print(f"TIEMPO DE ESPERA ESTIMADO = {tiempo_espera:.2f} segundos "
+      f"({horas:02d}:{minutos:02d}:{segundos:05.2f} [hh:mm:ss])")
+
+# Ejecutar la medición con la nueva función V4
+frecuencias, timestamps, delta_tiempos, allan_deviations, taus = objt_prueba.medir_n_muestras_equidistantesV5(
+    n_muestras=n_muestras, intervalo_s=intervalo_s, graficarFT=True,graficarDevTau=True,
+)
+
+# Mostrar los resultados en el formato solicitado (con unidades)
+print("\nResultados de la medición:")
+for i in range(len(frecuencias)):
+    print(f"Muestra {i+1} : {frecuencias[i]:.6f} Hz, {timestamps[i]:.6f} s, {delta_tiempos[i]:.6f} s")
+
+print("\nDATO  : Allan deviations y Taus")
+# Mostrar los pares Allan deviation y Tau juntos y con unidades
+for i in range(len(allan_deviations)):
+    print(f"Tau {taus[i]:.3f} s: Allan deviation = {allan_deviations[i]:.6f} Hz")
+
+
+
+
+"""
+
+
+# Configuración dispositivo
+
+"""
+    
+    
+    cnt = CNT_frequenciometro()
+    cnt.configurar_medicion_estadistica(
+        tiempo_apertura=10,
+        acoplamiento='DC',
+        impedancia='50',
+        atenuador='10',
+        filtro_analogico=True,
+        filtro_digital=True,
+        freq_filtro_digital=1000,
+        nivel_auto=False,
+        nivel_disparo=0.3,
+        medicion_continua=True,
+        numero_muestras=500
+    )
+    
+    
+    
+    
+"""
+
+#
+
+"""
+
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+# Parámetros de la prueba
+n_muestras = 200
+
+intervalo_s = 2E-4
+
+# Calcular y mostrar el tiempo de espera antes de medir
+tiempo_espera = n_muestras * intervalo_s * 1.1
+
+# Conversión a formato horas:minutos:segundos
+horas = int(tiempo_espera // 3600)
+minutos = int((tiempo_espera % 3600) // 60)
+segundos = tiempo_espera % 60
+
+print(f"TIEMPO DE ESPERA ESTIMADO = {tiempo_espera:.2f} segundos "
+      f"({horas:02d}:{minutos:02d}:{segundos:05.2f} [hh:mm:ss])")
+
+# Ejecutar la medición con la nueva función V2
+frecuencias, timestamps, delta_tiempos = objt_prueba.medir_n_muestras_equidistantesV31(n_muestras=n_muestras, intervalo_s=intervalo_s)
+
+# Mostrar los resultados en el formato solicitado
+print("\nResultados de la medición:")
+for i in range(len(frecuencias)):
+    print(f"Muestra {i+1}: {frecuencias[i]:.6f} Hz, {timestamps[i]:.6f} s, {delta_tiempos[i]:.6f} s") 
+
+
+
+
+"""
+
+
+
+
+
+
+
+
+
+#             medir_n_muestras_equidistantes     ADEV interno
+
+"""
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+adev = objt_prueba.leer_adev_cnt91()
+print("Allan deviation interna CNT-91:", adev)
+    
+   
+"""
+
+
+
+
+
+
+
+# Hardware pacing
+
+
+"""
+# ==== PRUEBA DE LA FUNCIÓN medir_n_muestras_equidistantes_hardware ====
+
+# 1. Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# 2. Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# 3. Parámetros de la prueba
+n_muestras = 200
+intervalo_s = 0.2
+
+# 4. Calcular y mostrar el tiempo de espera antes de medir (ajusta si lo ves necesario)
+tiempo_espera = n_muestras * intervalo_s * 1.05  # Alineado con la función hardware
+horas = int(tiempo_espera // 3600)
+minutos = int((tiempo_espera % 3600) // 60)
+segundos = tiempo_espera % 60
+
+print(f"TIEMPO DE ESPERA ESTIMADO = {tiempo_espera:.2f} segundos "
+      f"({horas:02d}:{minutos:02d}:{segundos:05.2f} [hh:mm:ss])")
+
+# 5. Ejecutar la medición con la función hardware pacing
+frecuencias, timestamps, delta_tiempos = objt_prueba.medir_n_muestras_equidistantes_hardware(
+    n_muestras=n_muestras,
+    intervalo_s=intervalo_s,
+    graficarFT=True,
+    exportar_excel=True
+)
+
+# 6. Mostrar los resultados en el formato solicitado
+print("\nResultados de la medición:")
+for i in range(len(frecuencias)):
+    print(f"Muestra {i+1}: {frecuencias[i]:.6f} Hz, {timestamps[i]:.6f} s, {delta_tiempos[i]:.6f} s")
+"""
+
+
+
+# LEER EL ADEV ESTADÍSTICO
+
+"""
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+adev = objt_prueba.leer_adev_cnt91()
+print("Allan deviation interna CNT-91:", adev)
+    
+   
+"""
+
+#PARA FINALIZAR LA CONEXIÓN CON EL DISPOSITIVO
+
+"""
+FINALIZAR LA COMUNICACIÓN CON EL DISPOSITIVO (FALTA)
+
+"""
+
+"""
+try:
+     objt_prueba.Reset_Device()
+    
+except Exception as t:
+    print("Error al ejecutar Measure_temperature_example", t)
+    
+    
+"""   
+
+
+# PARA LOS ERRORES
+
+"""
+
+try:
+    NumeroError = objt_prueba.System_Error_Number()
+    print("Resultado de ERROR:", NumeroError)
+except Exception as p:
+    print("Error al ejecutar Measure_example:", p) 
+"""   
+
+
+
+
+"""
+
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+# Parámetros de la prueba
+n_muestras = 100
+intervalo_s = 4e-6
+
+# Calcular y mostrar el tiempo de espera antes de medir
+tiempo_espera = n_muestras * intervalo_s * 1.1
+
+# Conversión a formato horas:minutos:segundos
+horas = int(tiempo_espera // 3600)
+minutos = int((tiempo_espera % 3600) // 60)
+segundos = tiempo_espera % 60
+
+print(f"TIEMPO DE ESPERA ESTIMADO = {tiempo_espera:.2f} segundos "
+      f"({horas:02d}:{minutos:02d}:{segundos:05.2f} [hh:mm:ss])")
+
+# Ejecutar la medición con la nueva función V4
+frecuencias, timestamps, delta_tiempos, allan_deviations, taus = objt_prueba.medir_n_muestras_equidistantesV7(
+    n_muestras=n_muestras, intervalo_s=intervalo_s, graficarFT=True,graficarDevTau=True,
+)
+
+# Mostrar los resultados en el formato solicitado (con unidades)
+print("\nResultados de la medición:")
+for i in range(len(frecuencias)):
+    print(f"Muestra {i+1} : {frecuencias[i]:.6f} Hz, {timestamps[i]:.6f} s, {delta_tiempos[i]:.6f} s")
+
+print("\nDATOS  : Allan deviations y Taus")
+# Mostrar los pares Allan deviation y Tau juntos y con unidades
+for i in range(len(allan_deviations)):
+    print(f"Tau {taus[i]:.6f} s: Allan deviation = {allan_deviations[i]:.6f} Hz")
+
+
+
+
+"""
+
+
+
+"""
+
+
+
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+# Parámetros de la prueba
+n_muestras = 10
+
+
+
+intervalo_s = 4.00E-06
+
+
+
+# Calcular y mostrar el tiempo de espera antes de medir
+tiempo_espera = n_muestras * intervalo_s * 1.1
+
+# Conversión a formato horas:minutos:segundos
+horas = int(tiempo_espera // 3600)
+minutos = int((tiempo_espera % 3600) // 60)
+segundos = tiempo_espera % 60
+
+print(f"TIEMPO DE ESPERA ESTIMADO = {tiempo_espera:.2f} segundos "
+      f"({horas:02d}:{minutos:02d}:{segundos:05.2f} [hh:mm:ss])")
+
+# Ejecutar la medición con la nueva función V2
+frecuencias, timestamps, delta_tiempos = objt_prueba.continuous_measurament_v31(n_muestras=n_muestras, intervalo_s=intervalo_s)
+
+# Mostrar los resultados en el formato solicitado
+print("\nResultados de la medición:")
+for i in range(len(frecuencias)):
+    print(f"Muestra {i+1}: {frecuencias[i]:.6f} Hz, {timestamps[i]:.6f} s, {delta_tiempos[i]:.6f} s") 
+
+
+
+
+
+"""
+
+
+"""
+
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+try:
+        adev = objt_prueba.leer_adev_cnt91()
+        if adev is not None:
+            print(f"ADEV obtenida: {adev}")
+        else:
+            print("Error: no se pudo obtener la ADEV.")
             
-            muestras_por_bloque (int): Número de muestras por cada bloque
-                - Rango: 2 a 1000000
-                - Default: 100
-                - Descripción: Número de mediciones que se realizarán en cada bloque
-                - Nota: El número real puede ser mayor si no es múltiplo del trigger
-                - Ejemplo: Si muestras_por_bloque=50, cada bloque tendrá 50 mediciones
-            
-            pacing_time_ms (int): Tiempo entre muestras en milisegundos
-                - Rango: 1 a 1000000 ms
-                - Default: 20
-                - Descripción: Intervalo de tiempo entre mediciones consecutivas
-                - Ejemplo: Si pacing_time_ms=20, habrá 20ms entre cada medición
-            
-            intervalo_s (float): Tiempo de apertura en segundos
-                - Rango: 0.000001 a 1000 s
-                - Default: 0.1
-                - Descripción: Tiempo durante el cual se realiza cada medición individual
-                - Ejemplo: Si intervalo_s=0.1, cada medición durará 0.1 segundos
-                - Nota: Este es el tiempo de integración para cada medición
-            
-            canal (str o int): Canal de medida
-                - Valores posibles: 'A', 'B', 1 o 2
-                - Default: 'A'
-                - Descripción: Especifica el canal a utilizar para la medición
-                - 'A' o 1: Canal A
-                - 'B' o 2: Canal B
-        
-        Comandos SCPI utilizados:
-            1. :CALC:AVER:STAT ON
-               - Descripción: Activa el cálculo estadístico
-               - Efecto: Habilita el procesamiento estadístico de las muestras
-            
-            2. :CALC:TYPE ADEV
-               - Descripción: Configura el tipo de cálculo como Allan deviation
-               - Efecto: El instrumento calculará la Allan deviation de las muestras
-            
-            3. :CALC:AVER:COUN
-               - Descripción: Configura el número de muestras para el cálculo
-               - Efecto: Define cuántas mediciones se realizarán en cada bloque
-            
-            4. :TRIG:TIM
-               - Descripción: Configura el intervalo entre muestras
-               - Efecto: Establece el tiempo de espera entre mediciones consecutivas
-            
-            5. :SENS:ACQ:APER
-               - Descripción: Configura el tiempo de apertura
-               - Efecto: Define el tiempo de integración para cada medición individual
-            
-            6. :INIT
-               - Descripción: Inicia la medición
-               - Efecto: Comienza la adquisición de muestras
-            
-            7. :CALC:AVER:ALL?
-               - Descripción: Obtiene media, SDEV, min y max
-               - Retorna: String con los valores separados por comas
-               - Formato: "media,sdev,min,max"
-            
-            8. :CALC:DATA?
-               - Descripción: Obtiene el valor de ADEV
-               - Retorna: String con los valores de ADEV
-               - Formato: "tipo,valor" donde tipo es el tipo de cálculo (ADEV)
-        
-        Retorna:
-            list: Lista de diccionarios con los resultados de cada bloque
-                Cada diccionario contiene:
-                - 'bloque': número de bloque (1 a n_bloques)
-                - 'adev': valor de Allan deviation calculado para el bloque
-                - 'media': valor medio de todas las muestras del bloque
-                - 'sdev': desviación estándar de todas las muestras del bloque
-                - 'min': valor mínimo de todas las muestras del bloque
-                - 'max': valor máximo de todas las muestras del bloque
-                Si ocurre algún error, retorna lista vacía
-        
-        Ejemplo de uso:
-            resultados = cnt.muestreo_adev_improved2(
-                n_bloques=3,
-                muestras_por_bloque=50,
-                pacing_time_ms=20,
-                intervalo_s=0.1,
-                canal='A'
-            )
-            # resultados será una lista de 3 diccionarios, uno por cada bloque
-            # Cada diccionario tendrá los valores estadísticos de sus 50 muestras
-        """
-        try:
-            # ========== SECCIÓN 1: Validación y selección de canal ==========
-            canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
-            ch = str(canal).upper()
-            if ch not in canales:
-                raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
-            canal_cmd = canales[ch]
-            
-            resultados = []
-            
-            # ========== SECCIÓN 2: Bucle principal para cada bloque ==========
-            for bloque in range(n_bloques):
-                print(f"\nIniciando bloque {bloque + 1} de {n_bloques}")
-                
-                # 1. Resetear y limpiar
-                self.dev.write('*RST')
-                self.dev.write('*CLS')
-                
-                # 2. Configurar canal
-                self.dev.write(f':CONF:FREQ {canal_cmd}')
-                
-                # 3. Configurar parámetros de medición
-                self.dev.write(':CALC:AVER:STAT ON')
-                self.dev.write(':CALC:TYPE ADEV')
-                self.dev.write(f':CALC:AVER:COUN {muestras_por_bloque}')
-                self.dev.write(f':TRIG:TIM {pacing_time_ms}ms')
-                self.dev.write(f'SENS:ACQ:APER {intervalo_s}')
-                
-                # 4. Iniciar medición
-                self.dev.write(':INIT')
-                
-                # 5. Mostrar progreso
-                muestra_anterior = 0
-                while True:
-                    self.dev.write(':CALC:AVER:COUN:CURR?')
-                    muestra_actual = int(float(self.dev.read()))
-                    
-                    if muestra_actual != muestra_anterior:
-                        print(f"\rMuestra {muestra_actual} de {muestras_por_bloque}", end='', flush=True)
-                        muestra_anterior = muestra_actual
-                    
-                    if muestra_actual >= muestras_por_bloque:
-                        print()  # Nueva línea al terminar
-                        break
-                        
-                    time.sleep(0.1)
-                
-                # 6. Obtener estadísticas completas
-                # :CALC:AVER:ALL? devuelve "media,sdev,min,max"
-                self.dev.write(':CALC:AVER:ALL?')
-                resp_stats = self.dev.read()
-                try:
-                    stats = [float(val) for val in resp_stats.strip().split(',') if val]
-                    media, sdev, min_val, max_val = stats
-                except Exception:
-                    media = sdev = min_val = max_val = None
-                
-                # 7. Obtener ADEV
-                # :CALC:DATA? devuelve "tipo,valor" donde tipo es ADEV
-                self.dev.write(':CALC:DATA?')
-                resp_adev = self.dev.read()
-                try:
-                    valores = [float(val) for val in resp_adev.strip().split(',') if val]
-                    adev = valores[1] if len(valores) > 1 else None
-                except Exception:
-                    adev = None
-                
-                # 8. Almacenar resultados
-                resultados.append({
-                    'bloque': bloque + 1,
-                    'adev': adev,
-                    'media': media,
-                    'sdev': sdev,
-                    'min': min_val,
-                    'max': max_val
-                })
-                
-                # 9. Desactivar estadísticas
-                self.dev.write(':CALC:AVER:STAT OFF')
-            
-            return resultados
-            
-        except Exception as e:
-            print(f"Error en muestreo ADEV: {str(e)}")
-            return []
-        
-        ##### importante probar que haria el pacing_time_ms "    self.dev.write(':TRIG:TIM 20ms')   en la funcion v31" 
+except Exception as e:
+        print(f"Excepción al probar leer_adev_cnt91: {e}")
+
+
+
+
+"""
+
+
+
+
+
+"""
+
+
+
+
+"""
