@@ -1,42 +1,74 @@
-# Control de Frecuencímetro CNT-91
+# CNT-91 Frequency Counter Interface
 
-Este proyecto contiene funciones para controlar y realizar mediciones con el frecuencímetro CNT-91.
+This Python library provides an interface for controlling and acquiring data from the CNT-91 Frequency Counter instrument via GPIB communication.
 
-## Funcionalidades
+## Features
 
-- Configuración de mediciones estadísticas
-- Lectura de estadísticas (media, mínimo, máximo, pico a pico, desviación estándar, ADEV)
-- Control de parámetros como tiempo de apertura, acoplamiento, impedancia, etc.
+- Frequency measurement in single and continuous modes
+- Temperature monitoring
+- Allan deviation calculations
+- Data acquisition with timestamps
+- Data visualization and export to Excel
+- Hardware pacing support
+- Statistical analysis capabilities
 
-## Requisitos
+## Requirements
 
 - Python 3.x
-- Conexión GPIB al instrumento CNT-91
+- PyVISA
+- NumPy
+- Pandas
+- Matplotlib
 
-## Uso
+## Installation
 
+1. Clone this repository:
+```bash
+git clone https://github.com/yourusername/cnt91-interface.git
+cd cnt91-interface
+```
+
+2. Install required packages:
+```bash
+pip install -r requirements.txt
+```
+
+## Usage
+
+Basic example:
 ```python
-from FUNCIONESNUEVAS import CNT_frequenciometro
+import CNT_9X_pendulum as CNT
 
-# Inicializar el frecuencímetro
-cnt = CNT_frequenciometro()
+# Create instrument instance
+cnt = CNT.CNT_frequenciometro()
 
-# Configurar medición estadística
-cnt.configurar_medicion_estadistica(
-    tiempo_apertura=1.0,
-    acoplamiento='DC',
-    impedancia='50',
-    atenuador='10',
-    filtro_analogico=True,
-    filtro_digital=True,
-    freq_filtro_digital=1000,
-    nivel_auto=False,
-    nivel_disparo=0.3,
-    medicion_continua=True,
-    numero_muestras=100
+# Single frequency measurement
+freq = cnt.measure_frequency('A')
+print(f"Frequency: {freq} Hz")
+
+# Continuous measurement with Allan deviation
+freqs, timestamps, delta_times, adevs, taus = cnt.medir_n_muestras_equidistantesV7(
+    n_muestras=100,
+    intervalo_s=0.2,
+    graficarFT=True,
+    graficarDevTau=True
 )
+```
 
-# Leer estadísticas
-resultados = cnt.leer_estadisticas(tiempo_apertura=1.0, numero_muestras=100)
-print(resultados)
-``` 
+## Documentation
+
+The library provides several methods for different measurement scenarios:
+
+- `measure_frequency()`: Single frequency measurement
+- `measure_frequency_array_CONTINUOUS()`: Continuous frequency measurement
+- `medir_n_muestras_equidistantesV7()`: Advanced measurement with Allan deviation
+- `leer_adev_cnt91()`: Read internal Allan deviation
+- `Measure_temperature_example()`: Monitor instrument temperature
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Author
+
+Carlos Darvoy Espigulé 
