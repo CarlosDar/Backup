@@ -1069,182 +1069,75 @@ class CNT_frequenciometro:
     
     
     
-### LEER EL ADEV ESTADISTICO
+
         
-    def leer_adev_cnt91(self,):
-        """
-        Extrae la Allan deviation (ADEV) calculada internamente por el CNT-91
-        para la última adquisición realizada.
+        
+        
     
-        Retorna:
-            Allan_Deviation: float
-                Allan deviation interna (o None si ocurre algún error)
-        """
+
+
+    
+    
+
+
+#### Saca el ADEV y Estádisticas de una única cuenta
+    def calcular_Adev_Estadistics(self, canal='A',N_muestras = 100, intervalo_captura=0.0002, pacing_time=None, acoplamiento='AC', impedancia='MIN', atenuacion=None, trigger_level=None, trigger_slope=None, filtro=None):
+        
+        import time
         try:
-            # 1. Resetear el instrumento para asegurar estado limpio
+            # ========== SECCIÓN 1: Validación y selección de canal ==========
+            canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
+            ch = str(canal).upper()
+            if ch not in canales:
+                raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
+            canal_cmd = canales[ch]
+            
+            # ========== SECCIÓN 2: Resetear y limpiar instrumento ==========
             self.dev.write('*RST')
-            # 2. Limpiar errores previos para evitar problemas durante la medición
-            self.dev.write("*CLS")
+            self.dev.write('*CLS')
             
+                
+            # ========== SECCIÓN 3: Configuración del CNT_91  ACOPLAMIENTO, IMPEDANCIA, ATENUACIÓN, TRIGGER LEVEL, TRIGGER SLOPE ==========
             
+            # En cada bloque, solo se ejecuta la instrucción si el valor correspondiente NO es None.
             
-            #self.dev.write(f':TRIG:TIM {pacing_time}ms') 
-            #self.dev.write(f'SENS:ACQ:APER {intervalo_s}')  # Tiempo de apertura por muestra
+            # Configura acoplamiento (AC/DC)
+            if acoplamiento is not None:
+                # Default value: AC  , Posible valores: AC or DC
+                self.dev.write(f':INP{canal_cmd}:COUP {acoplamiento}')
            
+            # Configura impedancia (50Ω–1MΩ, MAX, MIN)
+            if impedancia is not None:
+                # Default value: 50 Ohm , Posible valores: between [50 Ohm  1M Ohm] or MAX or MIN
+                self.dev.write(f':INP{canal_cmd}:IMP {impedancia}')
+            
+            # Configura atenuación (0 dB–10 dB, MAX, MIN)
+            if atenuacion is not None:
+                # Default value: 0 dB , Posible valores: between [0x to 10x] or MAX or MIN , 
+                # <Numeric values> ≤ 5 → atenuación 1, <Numeric values> > 5 → atenuación 10.
+                self.dev.write(f':INP{canal_cmd}:ATT {atenuacion}')
+            
+            # Configura nivel de trigger (0.1 V–10 V, MAX, MIN)
+            if trigger_level is not None:
+                # Default value: 0.5 V , Posible valores: between [0.1 V to 10 V] or MAX or MIN
+                self.dev.write(f':INP{canal_cmd}:TRL {trigger_level}')
+            
+            # Configura pendiente de trigger (POS/NEG)
+            if trigger_slope is not None:
+                # Default value: POS   , Posible valores: POS or NEG
+                self.dev.write(f':INP{canal_cmd}:TRS {trigger_slope}')
+            
+            # Configura frecuencia de filtro digital (1 Hz–50 MHz, MAX, MIN)
+            if filtro is not None:
+                # Default value: 100e3 Hz   , Posible valores: between [1 to 50e6 Hz] or MAX or MIN
+                self.dev.write(f':INP{canal_cmd}:FIL:DIG:FREQ {filtro}')     
                 
-                
-            # 3. Configurar y activar el cálculo estadístico
-            self.dev.write(':CALC:AVER:STAT ON')
-            self.dev.write(':CALC:AVER:TYPE ADEV')
-            
-            # 4. Iniciar la medición y esperar a que complete
-            self.dev.write(':INIT')
-            self.dev.write('*OPC?')
-            self.dev.read()  # Esperar a que complete
-            
-            # 5. Obtener los datos calculados
-            self.dev.write(':CALC:DATA?')
-            resp_adev = self.dev.read()
-            print("Valor bruto de ADEV:", resp_adev)
         
-            # 6. Procesar la respuesta
-            try:
-                valores = [float(val) for val in resp_adev.strip().split(',') if val]
-                Allan_Deviation = valores[0] if len(valores) >= 1 else None
-            except Exception:
-                Allan_Deviation = None
-            
-            # 7. Desactivar el cálculo estadístico al terminar
-            self.dev.write(':CALC:AVER:STAT OFF')
-        
-            return Allan_Deviation
-            
-        except Exception as e:
-            print(f"Error al leer ADEV: {str(e)}")
-            return None 
-        
-        
-        
-    
-
-    
-    
-    def calcular_adev_y_estadisticas(self, canal='A',N_muestras = 100, intervalo_captura=0.2, pacing_time=0.2, acoplamiento='AC', impedancia='MIN', atenuacion=0, trigger_level=0.5, trigger_slope='POS', filtro=100E3):
-        
-        import time
-        try:
-            # ========== SECCIÓN 1: Validación y selección de canal ==========
-            canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
-            ch = str(canal).upper()
-            if ch not in canales:
-                raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
-            canal_cmd = canales[ch]
-            
-            # ========== SECCIÓN 2: Resetear y limpiar instrumento ==========
-            self.dev.write('*RST')
-            self.dev.write('*CLS')
-            # ========== SECCIÓN 3: Configuración del CNT_91  ACOPLAMIENTO, IMPEDANCIA, ATENUACIÓN, TRIGGER LEVEL, TRIGGER SLOPE==========
-
-            self.dev.write(f':INP{canal_cmd}:COUP {acoplamiento}') # Default value: AC  , Posible valores: AC or DC or None
-            self.dev.write(f':INP{canal_cmd}:IMP {impedancia}') # Default value: 50 Ohm , Posible valores: between[50 Ohm  1M Ohm] or MAX or MIN  
-            self.dev.write(f':INP{canal_cmd}:ATT {atenuacion}') # Default value: 0 dB , Posible valores: between[0x to 10x] or MAX or MIN , <Numeric values> <= 5, and MIN gives attenuation 1 , <Numeric values> > 5, and MAX gives attenuation 10. 
-            self.dev.write(f':INP{canal_cmd}:TRL {trigger_level}') # Default value: 0.5 V , Posible valores: between[0.1 V to 10 V] or MAX or MIN 
-            self.dev.write(f':INP{canal_cmd}:TRS {trigger_slope}') # Default value: POS   , Posible valores: POS or NEG
-            self.dev.write(f':INP{canal_cmd}:FIL:DIG:FREQ {filtro}') # Default value: 100xE3 Hz   , Posible valores: between[1 to 50xE6 Hz] or MAX or MIN 
-
-            # ========== SECCIÓN 4: Configuración de canal  ==========  
-            self.dev.write(f':CONF:FREQ {canal_cmd}')
-            self.dev.write(f'SENS:ACQ:APER  {intervalo_captura}')  # Tiempo de apertura por muestra default: 0.2 s
-            
-            # ========== SECCIÓN 5: Configuración y activación de estadística ADEV ==========
-            self.dev.write(':CALC:AVER:STAT ON')
-            self.dev.write(':CALC:TYPE ADEV')
-            self.dev.write(f':ARM:START:COUN N_muestras')  # Número de muestras default: 100
-            
-            if pacing_time is not None:
-                self.dev.write(f'TRIGger:SOURce TIMer') # Default value: TIMer
-                self.dev.write(f':TRIG:TIM {pacing_time}') # Tiempo entre muestras default: 0.2 s
-            
-            
-            # ========== SECCIÓN 6: Iniciar medición ==========
-            self.dev.write(':INIT')
-            
-            ### Esperamos a que la medición termine
-            current = 0
-            while float(current) != N_muestras:
-                self.dev.write(':CALCulate:AVERage:COUNt:CURRent?')
-                current = self.dev.read()
-            
-            
-            # ========== SECCIÓN 7: Lectura de Allan deviation ==========
-            self.dev.write(':CALC:DATA?')
-            resp_adev = self.dev.read()
-            try:
-                valores = [float(val) for val in resp_adev.strip().split(',') if val]
-                allan_deviation = valores[0] if len(valores) >= 1 else None
-            except Exception:
-                allan_deviation = None
-            
-            # ========== SECCIÓN 8: Lectura de estadísticas de media ==========
-            self.dev.write(':CALC:AVER:ALL?')
-            resp_estadisticas = self.dev.read()
-            try:
-                valores = [float(val.strip()) for val in resp_estadisticas.strip().split(',') if val.strip()]
-                valor_medio       = valores[0] if len(valores) > 0 else None
-                desviacion_tipica = valores[1] if len(valores) > 1 else None
-                valor_minimo      = valores[2] if len(valores) > 2 else None
-                valor_maximo      = valores[3] if len(valores) > 3 else None
-            except Exception:
-                valor_medio       = None
-                desviacion_tipica = None
-                valor_minimo      = None
-                valor_maximo      = None
-                
-                
-            
-            self.dev.write(':CALC:AVER:STAT OFF') ## QUITAR ESTA INSTRUCCIÓN SI TE INTERESA QUE SIGA MIDIENDO
-            
-            # ========== SECCIÓN 9: Devolver resultados ==========
-            return allan_deviation, valor_medio, desviacion_tipica, valor_minimo, valor_maximo
-    
-        except Exception as e:
-            print(f"Error al calcular ADEV y media: {str(e)}")
-            return None, None, None, None, None
-    
-    
-
-
-#### LA MISMA FUNCION QUE LA ANTERIOR PERO YA NO CALCULAMOS MAXIMOS Y MINIMOS, VAMOS DIRECTOS A LO QUE QUEREMOS
-#### MIRAR TFG PARA DEFINIR CON INT MAX Y INT MIN  y numero de pasos un bloque de medidas allan y que luego lo 
-#### guarde con su tau especifica de paso.
-    def calcular_adev_y_estadisticas(self, canal='A',N_muestras = 100, intervalo_captura=0.2, pacing_time=0.2, acoplamiento='AC', impedancia='MIN', atenuacion=0, trigger_level=0.5, trigger_slope='POS', filtro=100E3):
-        
-        import time
-        try:
-            # ========== SECCIÓN 1: Validación y selección de canal ==========
-            canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
-            ch = str(canal).upper()
-            if ch not in canales:
-                raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
-            canal_cmd = canales[ch]
-            
-            # ========== SECCIÓN 2: Resetear y limpiar instrumento ==========
-            self.dev.write('*RST')
-            self.dev.write('*CLS')
-            # ========== SECCIÓN 3: Configuración del CNT_91  ACOPLAMIENTO, IMPEDANCIA, ATENUACIÓN, TRIGGER LEVEL, TRIGGER SLOPE==========
-
-            self.dev.write(f':INP{canal_cmd}:COUP {acoplamiento}') # Default value: AC  , Posible valores: AC or DC or None
-            self.dev.write(f':INP{canal_cmd}:IMP {impedancia}') # Default value: 50 Ohm , Posible valores: between[50 Ohm  1M Ohm] or MAX or MIN  
-            self.dev.write(f':INP{canal_cmd}:ATT {atenuacion}') # Default value: 0 dB , Posible valores: between[0x to 10x] or MAX or MIN , <Numeric values> <= 5, and MIN gives attenuation 1 , <Numeric values> > 5, and MAX gives attenuation 10. 
-            self.dev.write(f':INP{canal_cmd}:TRL {trigger_level}') # Default value: 0.5 V , Posible valores: between[0.1 V to 10 V] or MAX or MIN 
-            self.dev.write(f':INP{canal_cmd}:TRS {trigger_slope}') # Default value: POS   , Posible valores: POS or NEG
-            self.dev.write(f':INP{canal_cmd}:FIL:DIG:FREQ {filtro}') # Default value: 100xE3 Hz   , Posible valores: between[1 to 50xE6 Hz] or MAX or MIN 
-
-            # ========== SECCIÓN 4: Configuración de canal  ==========  
+            # ========== SECCIÓN 3: Configuración de canal y adquisición ==========
             self.dev.write(f':CONF:FREQ {canal_cmd}')
             self.dev.write(f'SENS:ACQ:APER  {intervalo_captura}')  # Tiempo de apertura por muestra default: 0.2 s , posible valores: entre [ _____________ s]
             
-            # ========== SECCIÓN 5: Configuración y activación de estadística ADEV ==========
+            # ========== SECCIÓN 4: Configuración de estadística ADEV ==========
             self.dev.write(':CALC:AVER:STAT ON')
             self.dev.write(':CALC:TYPE ADEV')
             self.dev.write(f':ARM:START:COUN N_muestras')  # Número de muestras default: 100 , posible valores: entre [1 to 1000000]
@@ -1265,6 +1158,7 @@ class CNT_frequenciometro:
             
             
             # ========== SECCIÓN 6: Lectura de Allan deviation ==========
+            
             self.dev.write(':CALC:DATA?')
             resp_adev = self.dev.read()
             try:
@@ -1272,264 +1166,197 @@ class CNT_frequenciometro:
                 allan_deviation = valores[0] if len(valores) >= 1 else None
             except Exception:
                 allan_deviation = None
-       
+            
+            # ========== SECCIÓN 7: Lectura de estadísticas de media ==========
+            self.dev.write(':CALC:AVER:ALL?')
+            resp_estadisticas = self.dev.read()
+            try:
+                valores = [float(val.strip()) for val in resp_estadisticas.strip().split(',') if val.strip()]
+                valor_medio       = valores[0] if len(valores) > 0 else None
+                desviacion_tipica = valores[1] if len(valores) > 1 else None
+                valor_minimo      = valores[2] if len(valores) > 2 else None
+                valor_maximo      = valores[3] if len(valores) > 3 else None
+            except Exception:
+                valor_medio       = None
+                desviacion_tipica = None
+                valor_minimo      = None
+                valor_maximo      = None
+                
+                
             
             self.dev.write(':CALC:AVER:STAT OFF') ## QUITAR ESTA INSTRUCCIÓN SI TE INTERESA QUE SIGA MIDIENDO
             
             # ========== SECCIÓN 8: Devolver resultados ==========
-            return allan_deviation
+            return allan_deviation, valor_medio, desviacion_tipica, valor_minimo, valor_maximo
     
         except Exception as e:
             print(f"Error al calcular ADEV y media: {str(e)}")
-            return None
+            return None, None, None, None, None
 
 
 
+    #### Saca el ADEVs y Estádisticas en Bloque de varias mediciones desde int min a int max
 
-
-    def calcular_adev_y_estadisticas_BLOCK(
+    def calcular_Adev_Estadistics_improved(
         self,
         canal='A',
         N_muestras=100,
-        intervalo_captura_min=0.2,
-        intervalo_captura_max=2.0,
-        pasos=3,
-        pacing_time=0.2,
-        acoplamiento='AC',
-        impedancia='MIN',
-        atenuacion=0,
-        trigger_level=0.5,
-        trigger_slope='POS',
-        filtro=100E3
+        intervalo_captura_min=0.004E-3,
+        intervalo_captura_max=10E-3,
+        pasos=6,
+        pacing_time=None,
+        acoplamiento=None,
+        impedancia=None,
+        atenuacion=None,
+        trigger_level=None,
+        trigger_slope=None,
+        filtro=None
     ):
-        """
-        Calcula la Allan deviation (ADEV) para varios intervalos de captura (SENS:ACQ:APER) en bloque.
-        Devuelve arrays de ADEV y su respectivo intervalo de captura, según el número de pasos especificado.
-
-        Parámetros:
-            canal: 'A', 'B', 1 o 2
-            N_muestras: número de muestras por cada medición
-            intervalo_captura_min: intervalo de captura mínimo (SENS:ACQ:APER)
-            intervalo_captura_max: intervalo de captura máximo (SENS:ACQ:APER)
-            pasos: número de veces que se calculará el ADEV (mínimo 2)
-            pacing_time: pacing time fijo (TRIG:TIM)
-            acoplamiento, impedancia, atenuacion, trigger_level, trigger_slope, filtro: configuración del canal
-
-        Devuelve:
-            lista_intervalos: lista de intervalos de captura usados
-            lista_adev: lista de valores de ADEV correspondientes
-        """
-        import numpy as np
         import time
-
-        # Validación de pasos
-        if pasos < 2:
-            raise ValueError("El número de pasos debe ser al menos 2.")
-
-        # Generar los intervalos de captura (espaciado lineal)
-        lista_intervalos = np.linspace(intervalo_captura_min, intervalo_captura_max, pasos)
-        lista_adev = []
-
-        for intervalo_captura in lista_intervalos:
-            try:
-                # ========== SECCIÓN 1: Validación y selección de canal ==========
-                canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
-                ch = str(canal).upper()
-                if ch not in canales:
-                    raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
-                canal_cmd = canales[ch]
-
-                # ========== SECCIÓN 2: Resetear y limpiar instrumento ==========
-                self.dev.write('*RST')
-                self.dev.write('*CLS')
-
-                # ========== SECCIÓN 3: Configuración del canal ==========
+        import numpy as np
+    
+        def _format_tau(tau: float) -> str:
+            """
+            Formatea el valor de tau de modo que:
+              - Si tau < 1e-3 → 1 cifra significativa
+              - Si tau >= 1e-3 → 2 cifras significativas
+            """
+            if tau < 1e-3:
+                return f"{tau:.1g}"
+            else:
+                return f"{tau:.2g}"
+    
+        try:
+            # ========== SECCIÓN 1: Validación y selección de canal ==========
+            canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
+            ch = str(canal).upper()
+            if ch not in canales:
+                raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
+            canal_cmd = canales[ch]
+    
+            # ========== SECCIÓN 2: Resetear y limpiar instrumento ==========
+            self.dev.write('*RST')
+            self.dev.write('*CLS')
+    
+            # ========== SECCIÓN 3: Configuración del CNT_91:
+            # ACOPLAMIENTO, IMPEDANCIA, ATENUACIÓN, TRIGGER LEVEL, TRIGGER SLOPE ==========
+            # Configura acoplamiento (AC/DC)
+            if acoplamiento is not None:
+                # Default value: AC  , Posible valores: AC or DC
                 self.dev.write(f':INP{canal_cmd}:COUP {acoplamiento}')
+           
+            # Configura impedancia (50Ω–1MΩ, MAX, MIN)
+            if impedancia is not None:
+                # Default value: 50 Ohm , Posible valores: between [50 Ohm  1M Ohm] or MAX or MIN
                 self.dev.write(f':INP{canal_cmd}:IMP {impedancia}')
+            
+            # Configura atenuación (0 dB–10 dB, MAX, MIN)
+            if atenuacion is not None:
+                # Default value: 0 dB , Posible valores: between [0x to 10x] or MAX or MIN , 
+                # <Numeric values> ≤ 5 → atenuación 1, <Numeric values> > 5 → atenuación 10.
                 self.dev.write(f':INP{canal_cmd}:ATT {atenuacion}')
+            
+            # Configura nivel de trigger (0.1 V–10 V, MAX, MIN)
+            if trigger_level is not None:
+                # Default value: 0.5 V , Posible valores: between [0.1 V to 10 V] or MAX or MIN
                 self.dev.write(f':INP{canal_cmd}:TRL {trigger_level}')
+            
+            # Configura pendiente de trigger (POS/NEG)
+            if trigger_slope is not None:
+                # Default value: POS   , Posible valores: POS or NEG
                 self.dev.write(f':INP{canal_cmd}:TRS {trigger_slope}')
+            
+            # Configura frecuencia de filtro digital (1 Hz–50 MHz, MAX, MIN)
+            if filtro is not None:
+                # Default value: 100e3 Hz   , Posible valores: between [1 to 50e6 Hz] or MAX or MIN
                 self.dev.write(f':INP{canal_cmd}:FIL:DIG:FREQ {filtro}')
-
-                # ========== SECCIÓN 4: Configuración de canal y estadística ==========
-                self.dev.write(f':CONF:FREQ {canal_cmd}')
-                self.dev.write(f'SENS:ACQ:APER {intervalo_captura}')  # <--- Este es el que se barre
-                self.dev.write(':CALC:AVER:STAT ON')
-                self.dev.write(':CALC:TYPE ADEV')
-                self.dev.write(f':ARM:START:COUN {N_muestras}')
-
+    
+            # ========== SECCIÓN 4: Configuración de canal y preparación de ADEV ==========
+            self.dev.write(f':CONF:FREQ {canal_cmd}')
+    
+            self.dev.write(':CALC:AVER:STAT ON')
+            self.dev.write(':CALC:TYPE ADEV')
+    
+            if pacing_time is not None:
                 self.dev.write('TRIGger:SOURce TIMer')
-                self.dev.write(f':TRIG:TIM {pacing_time}')  # <--- Este es fijo
-
-                # ========== SECCIÓN 5: Iniciar medición ==========
+                self.dev.write(f':TRIG:TIM {pacing_time}')
+    
+            # ========== SECCIÓN 5: Loop de MULTIPLES INTERVALOS DE CAPTURA ==========
+            resultados = []
+    
+            if pasos < 1:
+                raise ValueError("El parámetro 'pasos' debe ser al menos 1")
+            if pasos == 1:
+                valores_intervalo = [intervalo_captura_min]
+            else:
+                valores_intervalo = np.logspace(
+                    np.log10(intervalo_captura_min),
+                    np.log10(intervalo_captura_max),
+                    pasos
+                )
+    
+            for intervalo_captura in valores_intervalo:
+                # Formatear tau según su tamaño
+                tau_str = _format_tau(intervalo_captura)
+                self.dev.write(f'SENS:ACQ:APER {tau_str}')
+    
+                self.dev.write(f':ARM:START:COUN {N_muestras}')
                 self.dev.write(':INIT')
-
-                # Esperar a que la medición termine
+    
                 current = 0
                 while float(current) != N_muestras:
                     self.dev.write(':CALCulate:AVERage:COUNt:CURRent?')
                     current = self.dev.read()
-
-                # ========== SECCIÓN 6: Lectura de Allan deviation ==========
+                time.sleep(0.2)
                 self.dev.write(':CALC:DATA?')
                 resp_adev = self.dev.read()
+                time.sleep(0.2)
                 try:
-                    valores = [float(val) for val in resp_adev.strip().split(',') if val]
-                    allan_deviation = valores[0] if len(valores) >= 1 else None
+                    vals_adev = [float(val) for val in resp_adev.strip().split(',') if val]
+                    allan_deviation = vals_adev[0] if len(vals_adev) >= 1 else None
                 except Exception:
                     allan_deviation = None
-
-                self.dev.write(':CALC:AVER:STAT OFF')
-
-                lista_adev.append(allan_deviation)
-
-            except Exception as e:
-                print(f"Error al calcular ADEV para intervalo_captura={intervalo_captura}: {str(e)}")
-                lista_adev.append(None)
-
-        return lista_intervalos, lista_adev
-
-
-    def calcular_adev_y_estadisticas_BLOCK(
-        self,
-        canal='A',
-        N_muestras=100,
-        intervalo_captura_min=0.2,
-        intervalo_captura_max=2.0,
-        pasos=3,
-        pacing_time=0.2,
-        acoplamiento='AC',
-        impedancia='MIN',
-        atenuacion=0,
-        trigger_level=0.5,
-        trigger_slope='POS',
-        filtro=100E3,
-        ruta_csv=None,
-        graficar=False,
-        frecuencia_nominal=None
-    ):
-        """
-        Calcula la Allan deviation (ADEV) para varios intervalos de captura (SENS:ACQ:APER) en bloque.
-        Permite guardar los resultados en un CSV y graficar ADEV vs Tau.
-
-        Parámetros:
-            canal: 'A', 'B', 1 o 2
-            N_muestras: número de muestras por cada medición
-            intervalo_captura_min: intervalo de captura mínimo (SENS:ACQ:APER)
-            intervalo_captura_max: intervalo de captura máximo (SENS:ACQ:APER)
-            pasos: número de veces que se calculará el ADEV (mínimo 2)
-            pacing_time: pacing time fijo (TRIG:TIM)
-            acoplamiento, impedancia, atenuacion, trigger_level, trigger_slope, filtro: configuración del canal
-            ruta_csv: ruta donde guardar el CSV (por defecto None, no guarda)
-            graficar: si True, muestra la gráfica de ADEV vs Tau (por defecto False)
-            frecuencia_nominal: valor de la frecuencia para el título de la gráfica (opcional)
-
-        Devuelve:
-            lista_intervalos: lista de intervalos de captura usados (Tau)
-            lista_adev: lista de valores de ADEV correspondientes
-        """
-        import numpy as np
-        import time
-
-        # Validación de pasos
-        if pasos < 2:
-            raise ValueError("El número de pasos debe ser al menos 2.")
-
-        # Generar los intervalos de captura (espaciado lineal)
-        lista_intervalos = np.linspace(intervalo_captura_min, intervalo_captura_max, pasos)
-        lista_adev = []
-
-        for intervalo_captura in lista_intervalos:
-            try:
-                # ========== SECCIÓN 1: Validación y selección de canal ==========
-                canales = {'A': '@1', 'B': '@2', '1': '@1', '2': '@2'}
-                ch = str(canal).upper()
-                if ch not in canales:
-                    raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
-                canal_cmd = canales[ch]
-
-                # ========== SECCIÓN 2: Resetear y limpiar instrumento ==========
-                self.dev.write('*RST')
-                self.dev.write('*CLS')
-
-                # ========== SECCIÓN 3: Configuración del canal ==========
-                self.dev.write(f':INP{canal_cmd}:COUP {acoplamiento}')
-                self.dev.write(f':INP{canal_cmd}:IMP {impedancia}')
-                self.dev.write(f':INP{canal_cmd}:ATT {atenuacion}')
-                self.dev.write(f':INP{canal_cmd}:TRL {trigger_level}')
-                self.dev.write(f':INP{canal_cmd}:TRS {trigger_slope}')
-                self.dev.write(f':INP{canal_cmd}:FIL:DIG:FREQ {filtro}')
-
-                # ========== SECCIÓN 4: Configuración de canal y estadística ==========
-                self.dev.write(f':CONF:FREQ {canal_cmd}')
-                self.dev.write(f'SENS:ACQ:APER {intervalo_captura}')  # <--- Este es el que se barre
-                self.dev.write(':CALC:AVER:STAT ON')
-                self.dev.write(':CALC:TYPE ADEV')
-                self.dev.write(f':ARM:START:COUN {N_muestras}')
-
-                self.dev.write('TRIGger:SOURce TIMer')
-                self.dev.write(f':TRIG:TIM {pacing_time}')  # <--- Este es fijo
-
-                # ========== SECCIÓN 5: Iniciar medición ==========
-                self.dev.write(':INIT')
-
-                # Esperar a que la medición termine
-                current = 0
-                while float(current) != N_muestras:
-                    self.dev.write(':CALCulate:AVERage:COUNt:CURRent?')
-                    current = self.dev.read()
-
-                # ========== SECCIÓN 6: Lectura de Allan deviation ==========
-                self.dev.write(':CALC:DATA?')
-                resp_adev = self.dev.read()
+    
+                self.dev.write(':CALC:AVER:ALL?')
+                resp_estad = self.dev.read()
                 try:
-                    valores = [float(val) for val in resp_adev.strip().split(',') if val]
-                    allan_deviation = valores[0] if len(valores) >= 1 else None
+                    vals_est = [
+                        float(val.strip())
+                        for val in resp_estad.strip().split(',')
+                        if val.strip()
+                    ]
+                    valor_medio = vals_est[0] if len(vals_est) > 0 else None
+                    desviacion_tipica = vals_est[1] if len(vals_est) > 1 else None
+                    valor_minimo = vals_est[2] if len(vals_est) > 2 else None
+                    valor_maximo = vals_est[3] if len(vals_est) > 3 else None
                 except Exception:
-                    allan_deviation = None
+                    valor_medio = None
+                    desviacion_tipica = None
+                    valor_minimo = None
+                    valor_maximo = None
+    
+                resultados.append(
+                    (
+                        intervalo_captura,
+                        allan_deviation,
+                        valor_medio,
+                        desviacion_tipica,
+                        valor_minimo,
+                        valor_maximo
+                    )
+                )
+    
+            # ========== SECCIÓN 6: Desactivar estadística ADEV ==========
+            self.dev.write(':CALC:AVER:STAT OFF')
+    
+            # ========== SECCIÓN 7: Devolver resultados ==========
+            return resultados
+    
+        except Exception as e:
+            print(f"Error en calcular_Adev_Estadistics_improved: {str(e)}")
+            return []
 
-                self.dev.write(':CALC:AVER:STAT OFF')
 
-                lista_adev.append(allan_deviation)
-
-            except Exception as e:
-                print(f"Error al calcular ADEV para intervalo_captura={intervalo_captura}: {str(e)}")
-                lista_adev.append(None)
-
-        # Guardar CSV si se solicita
-        if ruta_csv is not None:
-            try:
-                import pandas as pd
-                df = pd.DataFrame({
-                    'Tau (s)': lista_intervalos,
-                    'ADEV (Hz)': lista_adev
-                })
-                df.to_csv(ruta_csv, index=False)
-                print(f"Resultados guardados en {ruta_csv}")
-            except Exception as e:
-                print(f"Error al guardar el CSV: {e}")
-
-        # Graficar si se solicita
-        if graficar:
-            try:
-                import matplotlib.pyplot as plt
-                plt.figure(figsize=(8, 5))
-                plt.plot(lista_intervalos, lista_adev, marker='o', linestyle='-', color='C0')
-                plt.xlabel('Tau (s)', fontsize=12)
-                plt.ylabel('ADEV (Hz)', fontsize=12)
-                titulo = "ADEV (Hz) vs Tau (s)"
-                if frecuencia_nominal is not None:
-                    titulo += f" para frecuencia ≈ {frecuencia_nominal} Hz"
-                plt.title(titulo, fontsize=14)
-                plt.grid(True, which='both', linestyle='--', alpha=0.5)
-                plt.xscale('log')
-                plt.yscale('log')
-                plt.tight_layout()
-                plt.show()
-            except Exception as e:
-                print(f"Error al graficar: {e}")
-
-        return lista_intervalos, lista_adev
 
 
 
@@ -2321,6 +2148,83 @@ except Exception as e:
 
 """
 
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+try:
+        adev, valor_medio, desviacion_tipica, valor_minimo, valor_maximo = objt_prueba.calcular_Adev_Estadistics(canal='A')
+ 
+            
+except Exception as e:
+        print(f"Excepción al probar leer_adev_cnt91: {e}")
+
+
+
+# Imprime los resultados, incluyendo unidades
+print(f"Allan deviation:       {adev} Hz")
+print(f"Mean value:            {valor_medio} Hz")
+print(f"Standard deviation:    {desviacion_tipica} Hz")
+print(f"Minimum value:         {valor_minimo} Hz")
+print(f"Maximum value:         {valor_maximo} Hz")
+
+
+"""
+
+
+
+
+"""
+
+
+
+
+# Crear un objeto de la Libreria CNT_9X_pendulum
+import CNT_9X_pendulum as CNT
+objt_prueba = CNT.CNT_frequenciometro()
+
+# Ver la lista de dispositivos en el GPIB
+import pyvisa
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+print("Available VISA resources:", resources)
+
+# ====== NUEVA SECCIÓN: Prueba de la función modificada ======
+
+
+
+# (1) Abrir conexión VISA al dispositivo (ajustar índice o dirección según corresponda)
+# Usamos el primer recurso listado en `resources` como ejemplo
+direccion_dispositivo = resources[0]  
+objt_prueba.dev = rm.open_resource(direccion_dispositivo)
+
+# (2) Configurar parámetros para la prueba
+canal = 'A'
+
+
+# (3) Llamar a la función mejorada
+resultados = objt_prueba.calcular_Adev_Estadistics_improved(
+    canal=canal
+
+)
+
+# (4) Mostrar resultados por cada tau (tiempo de integración)
+for tau, adev, media, desv_tip, minimo, maximo in resultados:
+    print(f"Tau = {tau:.3f} s:")
+    print(f"    Allan Deviation = {adev}")
+    print(f"    Media           = {media}")
+    print(f"    Desv. Típica    = {desv_tip}")
+    print(f"    Valor Mínimo    = {minimo}")
+    print(f"    Valor Máximo    = {maximo}")
+    print()
 
 
 
