@@ -1129,7 +1129,7 @@ class CNT_frequenciometro:
 
     
     
-    def calcular_adev_y_estadisticas(self, canal='A',N_muestras = 100, intervalo_captura=0.2, pacing_time=None):
+    def calcular_adev_y_estadisticas(self, canal='A',N_muestras = 100, intervalo_captura=0.2, pacing_time=0.2, acoplamiento='AC', impedancia='MIN', atenuacion=0, trigger_level=0.5, trigger_slope='POS', filtro=100E3):
         
         import time
         try:
@@ -1143,22 +1143,30 @@ class CNT_frequenciometro:
             # ========== SECCIÓN 2: Resetear y limpiar instrumento ==========
             self.dev.write('*RST')
             self.dev.write('*CLS')
-            
-            # ========== SECCIÓN 3: Configuración de canal y adquisición ==========
+            # ========== SECCIÓN 3: Configuración del CNT_91  ACOPLAMIENTO, IMPEDANCIA, ATENUACIÓN, TRIGGER LEVEL, TRIGGER SLOPE==========
+
+            self.dev.write(f':INP{canal_cmd}:COUP {acoplamiento}') # Default value: AC  , Posible valores: AC or DC or None
+            self.dev.write(f':INP{canal_cmd}:IMP {impedancia}') # Default value: 50 Ohm , Posible valores: between[50 Ohm  1M Ohm] or MAX or MIN  
+            self.dev.write(f':INP{canal_cmd}:ATT {atenuacion}') # Default value: 0 dB , Posible valores: between[0x to 10x] or MAX or MIN , <Numeric values> <= 5, and MIN gives attenuation 1 , <Numeric values> > 5, and MAX gives attenuation 10. 
+            self.dev.write(f':INP{canal_cmd}:TRL {trigger_level}') # Default value: 0.5 V , Posible valores: between[0.1 V to 10 V] or MAX or MIN 
+            self.dev.write(f':INP{canal_cmd}:TRS {trigger_slope}') # Default value: POS   , Posible valores: POS or NEG
+            self.dev.write(f':INP{canal_cmd}:FIL:DIG:FREQ {filtro}') # Default value: 100xE3 Hz   , Posible valores: between[1 to 50xE6 Hz] or MAX or MIN 
+
+            # ========== SECCIÓN 4: Configuración de canal  ==========  
             self.dev.write(f':CONF:FREQ {canal_cmd}')
-            self.dev.write(f'SENS:ACQ:APER  {intervalo_captura}')  # Tiempo de apertura por muestra
+            self.dev.write(f'SENS:ACQ:APER  {intervalo_captura}')  # Tiempo de apertura por muestra default: 0.2 s
             
-            # ========== SECCIÓN 4: Configuración de estadística ADEV ==========
+            # ========== SECCIÓN 5: Configuración y activación de estadística ADEV ==========
             self.dev.write(':CALC:AVER:STAT ON')
             self.dev.write(':CALC:TYPE ADEV')
-            self.dev.write(f':ARM:START:COUN N_muestras')  # Número de muestras
+            self.dev.write(f':ARM:START:COUN N_muestras')  # Número de muestras default: 100
             
             if pacing_time is not None:
-                self.dev.write(f'TRIGger:SOURce TIMer')
-                self.dev.write(f':TRIG:TIM {pacing_time}') # Tiempo entre muestras
+                self.dev.write(f'TRIGger:SOURce TIMer') # Default value: TIMer
+                self.dev.write(f':TRIG:TIM {pacing_time}') # Tiempo entre muestras default: 0.2 s
             
             
-            # ========== SECCIÓN 5: Iniciar medición ==========
+            # ========== SECCIÓN 6: Iniciar medición ==========
             self.dev.write(':INIT')
             
             ### Esperamos a que la medición termine
@@ -1168,7 +1176,7 @@ class CNT_frequenciometro:
                 current = self.dev.read()
             
             
-            # ========== SECCIÓN 6: Lectura de Allan deviation ==========
+            # ========== SECCIÓN 7: Lectura de Allan deviation ==========
             self.dev.write(':CALC:DATA?')
             resp_adev = self.dev.read()
             try:
@@ -1177,7 +1185,7 @@ class CNT_frequenciometro:
             except Exception:
                 allan_deviation = None
             
-            # ========== SECCIÓN 7: Lectura de estadísticas de media ==========
+            # ========== SECCIÓN 8: Lectura de estadísticas de media ==========
             self.dev.write(':CALC:AVER:ALL?')
             resp_estadisticas = self.dev.read()
             try:
@@ -1196,7 +1204,7 @@ class CNT_frequenciometro:
             
             self.dev.write(':CALC:AVER:STAT OFF') ## QUITAR ESTA INSTRUCCIÓN SI TE INTERESA QUE SIGA MIDIENDO
             
-            # ========== SECCIÓN 8: Devolver resultados ==========
+            # ========== SECCIÓN 9: Devolver resultados ==========
             return allan_deviation, valor_medio, desviacion_tipica, valor_minimo, valor_maximo
     
         except Exception as e:
@@ -1209,7 +1217,7 @@ class CNT_frequenciometro:
 #### LA MISMA FUNCION QUE LA ANTERIOR PERO YA NO CALCULAMOS MAXIMOS Y MINIMOS, VAMOS DIRECTOS A LO QUE QUEREMOS
 #### MIRAR TFG PARA DEFINIR CON INT MAX Y INT MIN  y numero de pasos un bloque de medidas allan y que luego lo 
 #### guarde con su tau especifica de paso.
-    def calcular_adev_y_estadisticas(self, canal='A',N_muestras = 100, intervalo_captura=0.2, pacing_time=None):
+    def calcular_adev_y_estadisticas(self, canal='A',N_muestras = 100, intervalo_captura=0.2, pacing_time=0.2, acoplamiento='AC', impedancia='MIN', atenuacion=0, trigger_level=0.5, trigger_slope='POS', filtro=100E3):
         
         import time
         try:
@@ -1223,15 +1231,23 @@ class CNT_frequenciometro:
             # ========== SECCIÓN 2: Resetear y limpiar instrumento ==========
             self.dev.write('*RST')
             self.dev.write('*CLS')
-            
-            # ========== SECCIÓN 3: Configuración de canal y adquisición ==========
+            # ========== SECCIÓN 3: Configuración del CNT_91  ACOPLAMIENTO, IMPEDANCIA, ATENUACIÓN, TRIGGER LEVEL, TRIGGER SLOPE==========
+
+            self.dev.write(f':INP{canal_cmd}:COUP {acoplamiento}') # Default value: AC  , Posible valores: AC or DC or None
+            self.dev.write(f':INP{canal_cmd}:IMP {impedancia}') # Default value: 50 Ohm , Posible valores: between[50 Ohm  1M Ohm] or MAX or MIN  
+            self.dev.write(f':INP{canal_cmd}:ATT {atenuacion}') # Default value: 0 dB , Posible valores: between[0x to 10x] or MAX or MIN , <Numeric values> <= 5, and MIN gives attenuation 1 , <Numeric values> > 5, and MAX gives attenuation 10. 
+            self.dev.write(f':INP{canal_cmd}:TRL {trigger_level}') # Default value: 0.5 V , Posible valores: between[0.1 V to 10 V] or MAX or MIN 
+            self.dev.write(f':INP{canal_cmd}:TRS {trigger_slope}') # Default value: POS   , Posible valores: POS or NEG
+            self.dev.write(f':INP{canal_cmd}:FIL:DIG:FREQ {filtro}') # Default value: 100xE3 Hz   , Posible valores: between[1 to 50xE6 Hz] or MAX or MIN 
+
+            # ========== SECCIÓN 4: Configuración de canal  ==========  
             self.dev.write(f':CONF:FREQ {canal_cmd}')
-            self.dev.write(f'SENS:ACQ:APER  {intervalo_captura}')  # Tiempo de apertura por muestra
+            self.dev.write(f'SENS:ACQ:APER  {intervalo_captura}')  # Tiempo de apertura por muestra default: 0.2 s
             
-            # ========== SECCIÓN 4: Configuración de estadística ADEV ==========
+            # ========== SECCIÓN 5: Configuración y activación de estadística ADEV ==========
             self.dev.write(':CALC:AVER:STAT ON')
             self.dev.write(':CALC:TYPE ADEV')
-            self.dev.write(f':ARM:START:COUN N_muestras')  # Número de muestras
+            self.dev.write(f':ARM:START:COUN N_muestras')  # Número de muestras default: 100
             
             if pacing_time is not None:
                 self.dev.write(f'TRIGger:SOURce TIMer')
