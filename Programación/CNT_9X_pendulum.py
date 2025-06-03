@@ -1242,16 +1242,16 @@ class CNT_frequenciometro:
 
             # ========== SECCIÓN 4: Configuración de canal  ==========  
             self.dev.write(f':CONF:FREQ {canal_cmd}')
-            self.dev.write(f'SENS:ACQ:APER  {intervalo_captura}')  # Tiempo de apertura por muestra default: 0.2 s
+            self.dev.write(f'SENS:ACQ:APER  {intervalo_captura}')  # Tiempo de apertura por muestra default: 0.2 s , posible valores: entre [0.001 s to 10 s]
             
             # ========== SECCIÓN 5: Configuración y activación de estadística ADEV ==========
             self.dev.write(':CALC:AVER:STAT ON')
             self.dev.write(':CALC:TYPE ADEV')
-            self.dev.write(f':ARM:START:COUN N_muestras')  # Número de muestras default: 100
+            self.dev.write(f':ARM:START:COUN N_muestras')  # Número de muestras default: 100 , posible valores: entre [1 to 1000000]
             
             if pacing_time is not None:
                 self.dev.write(f'TRIGger:SOURce TIMer')
-                self.dev.write(f':TRIG:TIM {pacing_time}') # Tiempo entre muestras
+                self.dev.write(f':TRIG:TIM {pacing_time}') # Tiempo entre muestras , default: 0.2 s , posible valores: entre [0.001 s to 10 s]
             
             
             # ========== SECCIÓN 5: Iniciar medición ==========
