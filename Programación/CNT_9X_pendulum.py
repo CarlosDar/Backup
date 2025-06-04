@@ -1950,7 +1950,7 @@ class CNT_frequenciometro:
         self.dev.write('DISP:ENAB OFF')
 
         # ====== SECCIÓN 5: Timeout de comunicación VISA (30 segundos) ======
-        self.dev.timeout = 30000  # Timeout en milisegundos
+        self.dev.timeout = 30000  # Timeout en milisegundos  --> EN SU LUGAR PODRIA PONER LA EQUACION QUE CALCULÉ O PONERLA INDEFINIDAMENTE
 
         # ====== SECCIÓN 6: Configuración del tiempo de integración (apertura) ======
         if intervalo_captura is not None:
