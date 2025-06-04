@@ -1533,7 +1533,7 @@ class CNT_frequenciometro:
 
 
 
-
+# probar primero esta
     def medir_n_muestras_equidistantesV31_BTBack(
         self,
         n_muestras=100,
@@ -1681,9 +1681,9 @@ class CNT_frequenciometro:
         return frecuencias, timestamps, delta_tiempos
 
 
+# esta es un poquito mas ambiciosa
 
-
-    def medir_n_muestras_equidistantesV31_BTBack( ## la recomendacion es de 
+    def medir_n_muestras_equidistantesV31_BTBack( ## la recomendacion es de   , se llama overlapping
         self,
         n_muestras=100,
         canal='A',
@@ -1864,7 +1864,7 @@ class CNT_frequenciometro:
         return frecuencias, timestamps, delta_tiempos    
 
 
-
+# version de Joan pero muy eficiente y ambicioso
 
     def medir_n_muestras_equidistantesV31_BTBack_improved(
         self,
@@ -1950,7 +1950,7 @@ class CNT_frequenciometro:
         self.dev.write('DISP:ENAB OFF')
 
         # ====== SECCIÓN 5: Timeout de comunicación VISA (30 segundos) ======
-        self.dev.timeout = 30000  # Timeout en milisegundos  --> EN SU LUGAR PODRIA PONER LA EQUACION QUE CALCULÉ O PONERLA INDEFINIDAMENTE
+        self.dev.timeout = 30000  # Timeout en milisegundos  --> EN SU LUGAR PODRIA PONER LA EQUACION QUE CALCULÉ O PONERLA INDEFINIDAMENTE tiempo_estimado = n_muestras * intervalo_captura ....
 
         # ====== SECCIÓN 6: Configuración del tiempo de integración (apertura) ======
         if intervalo_captura is not None:
@@ -2028,11 +2028,184 @@ class CNT_frequenciometro:
         # ====== SECCIÓN 14: Devolver resultados ======
         return frecuencias, timestamps, delta_tiempos
 
+# para el adev de la anterior funcion
+    def calcular_allan_deviation_overlapping(frecuencias, intervalo_captura):
+        """
+        Calcula la desviación de Allan (Allan deviation) para un array de frecuencias equidistantes.
+
+        Parámetros:
+        -----------
+        frecuencias : array-like
+            Array de frecuencias medidas (Hz), equidistantes en el tiempo.
+        intervalo_captura : float
+            Intervalo de captura (tiempo de integración) entre muestras (en segundos).
+
+        Devuelve:
+        ---------
+        adevs : np.ndarray
+            Array de valores de desviación de Allan (Hz) para cada tau.
+        taus : np.ndarray
+            Array de valores de tau (segundos) para los que se ha calculado la desviación de Allan.
+        """
+        import numpy as np
+        frecuencias = np.asarray(frecuencias)
+        N = len(frecuencias)
+        max_m = N // 2  # Solo tiene sentido hasta la mitad del array
+
+        taus = []
+        adevs = []
+
+        for m in range(1, max_m + 1):
+            M = N // m
+            if M < 2:
+                break
+            # Promedios de frecuencia para cada bloque de tamaño m
+            promedios = [np.mean(frecuencias[i * m:(i + 1) * m]) for i in range(M)]
+            # Diferencias cuadráticas entre bloques consecutivos
+            dif_cuadrado = [(promedios[i + 1] - promedios[i]) ** 2 for i in range(M - 1)]
+            sigma2 = np.sum(dif_cuadrado) / (2 * (M - 1))
+            sigma = np.sqrt(sigma2)
+            taus.append(m * intervalo_captura)
+            adevs.append(sigma)
+
+        return np.array(adevs), np.array(taus)
 
 
 
 
 
+    def Calc_Adev_single_Tau(
+        self,
+        n_muestras=100,
+        canal='A',
+        intervalo_captura_min=0.01,
+        intervalo_captura_max=1.0,
+        pasos=10,
+        acoplamiento=None,
+        impedancia=None,
+        atenuacion=None,
+        trigger_level=None,
+        trigger_slope=None,
+        filtro=None,
+        graficar=False,
+        exportar_excel=False
+    ):
+        """
+        Realiza un barrido de tiempos de integración (tau) entre intervalo_captura_min y intervalo_captura_max,
+        adquiere los datos para cada tau (sin llamar a funciones externas), y calcula la desviación de Allan (Adev)
+        para cada uno de esos valores.
+
+        Devuelve:
+        ---------
+        adevs : np.ndarray
+            Array de valores de desviación de Allan (Hz) para cada tau.
+        taus : np.ndarray
+            Array de valores de tau (segundos) usados.
+        """
+
+
+        """
+        
+        Ventaja:
+        El tau es exacto y definido por hardware.
+        El ruido de medida es menor para cada tau.
+        Desventaja:
+        No puedes calcular la Allan deviation para submúltiplos de tau sin repetir la adquisición.
+        Es más lento si quieres cubrir muchos valores de tau.
+        """
+        import numpy as np
+
+        taus = np.linspace(intervalo_captura_min, intervalo_captura_max, pasos)
+        adevs = []
+
+        canales = {'A': 1, 'B': 2, '1': 1, '2': 2}
+        ch = str(canal).upper()
+        if ch not in canales:
+            raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
+        canal_num = canales[ch]
+
+        for tau in taus:
+            # ====== Reset y limpieza del instrumento ======
+            self.dev.write('*RST')
+            self.dev.write('*CLS')
+
+            # ====== Configuración avanzada de canal (solo si se especifica) ======
+            if acoplamiento is not None:
+                self.dev.write(f':INP{canal_num}:COUP {acoplamiento}')
+            if impedancia is not None:
+                self.dev.write(f':INP{canal_num}:IMP {impedancia}')
+            if atenuacion is not None:
+                self.dev.write(f':INP{canal_num}:ATT {atenuacion}')
+            if trigger_level is not None:
+                self.dev.write(f':INP{canal_num}:TRL {trigger_level}')
+            if trigger_slope is not None:
+                self.dev.write(f':INP{canal_num}:TRS {trigger_slope}')
+            if filtro is not None:
+                self.dev.write(f':INP{canal_num}:FIL:DIG:FREQ {filtro}')
+
+            # ====== Mejoras recomendadas según el manual ======
+            # self.dev.write('CAL:INT:AUTO OFF')   # Desactivar interpoladores solo si no necesitas máxima precisión
+            self.dev.write('DISP:ENAB OFF')
+
+            # ====== Timeout de comunicación VISA (30 segundos) ======
+            self.dev.timeout = 30000
+
+            # ====== Configuración del tiempo de integración (apertura) ======
+            self.dev.write("FORM:PACK")
+            self.dev.write(f"SENS:ACQ:APER {tau}")
+
+            # ====== Adquisición de frecuencias y timestamps en binario ======
+            self.dev.write(f":MEASure:ARRay:FREQuency:BTBack? {n_muestras},{canal_num}")
+            data_freq = self.dev.read_raw()
+            frecuencias = np.frombuffer(data_freq, dtype=np.float64)
+
+            self.dev.write(f":MEASure:ARRay:TSTAmp? {n_muestras},{canal_num}")
+            data_time = self.dev.read_raw()
+            timestamps = np.frombuffer(data_time, dtype=np.float64)
+
+            # ====== Control de errores en la adquisición ======
+            if len(frecuencias) != len(timestamps):
+                raise RuntimeError("El número de frecuencias y timestamps no coincide. Puede haber habido un error de comunicación.")
+
+            # ====== Cálculo de Allan deviation para este tau (solo m=1) ======
+            if len(frecuencias) < 2:
+                adev = np.nan
+            else:
+                difs = np.diff(frecuencias)
+                sigma2 = np.sum(difs**2) / (2 * (len(frecuencias) - 1))
+                adev = np.sqrt(sigma2)
+            adevs.append(adev)
+
+            # ====== Reactivar display al finalizar cada tau ======
+            self.dev.write('DISP:ENAB ON')
+
+        adevs = np.array(adevs)
+
+        # Graficar si se solicita
+        if graficar:
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(8, 5))
+            plt.plot(taus, adevs, marker='o', linestyle='-')
+            plt.xscale('log')
+            plt.yscale('log')
+            plt.xlabel('Tau (s)')
+            plt.ylabel('Allan deviation (Hz)')
+            plt.title('Allan deviation vs Tau')
+            plt.grid(True, which='both', linestyle='--', alpha=0.5)
+            plt.tight_layout()
+            plt.show()
+
+        # Exportar a Excel si se solicita
+        if exportar_excel:
+            import pandas as pd
+            from datetime import datetime
+            fecha_hora = datetime.now().strftime("%S_%M_%H_%d_%m_%Y")
+            df = pd.DataFrame({'Tau (s)': taus, 'Adev (Hz)': adevs})
+            nombre = f"Adev_vs_Tau_{fecha_hora}.xlsx"
+            df.to_excel(nombre, index=False, float_format="%.6f")
+            print(f"Archivo de Adev vs Tau guardado como: {nombre}")
+
+        return adevs, taus
 
 
 
