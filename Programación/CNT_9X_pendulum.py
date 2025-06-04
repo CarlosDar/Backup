@@ -1683,7 +1683,7 @@ class CNT_frequenciometro:
 
 
 
-    def medir_n_muestras_equidistantesV31_BTBack(
+    def medir_n_muestras_equidistantesV31_BTBack( ## la recomendacion es de 
         self,
         n_muestras=100,
         canal='A',
@@ -1866,7 +1866,167 @@ class CNT_frequenciometro:
 
 
 
+    def medir_n_muestras_equidistantesV31_BTBack_improved(
+        self,
+        n_muestras=100,
+        canal='A',
+        intervalo_captura=0.2,
+        graficarFT=False,
+        exportar_excel=False,
+        acoplamiento=None,
+        impedancia=None,
+        atenuacion=None,
+        trigger_level=None,
+        trigger_slope=None,
+        filtro=None
+    ):
+        """
+        Adquisición rápida de un array de frecuencias y sus timestamps usando los comandos:
+        - :MEASure:ARRay:FREQuency:BTBack? N,canal
+        - :MEASure:ARRay:TSTAmp? N,canal
+        en formato PACKED (binario), para máxima velocidad de transferencia.
 
+        Permite especificar el tiempo de integración (apertura) y la configuración avanzada del canal.
+
+        Parámetros de entrada:
+        ----------------------
+        n_muestras : int
+            Número de muestras a adquirir (default: 100)
+        canal : str o int
+            Canal de medida: 'A', 'B', 1 o 2 (default: 'A')
+        intervalo_captura : float o None
+            Tiempo de integración (apertura) en segundos para cada muestra.
+            - Mínimo típico: 4e-6 s (4 µs)
+            - Máximo típico: 1000 s (depende del instrumento)
+            - Default CNT-91: 0.2 s
+            Si se pasa None, NO se configura el tiempo de integración y se usa el valor actual del instrumento.
+        graficarFT : bool
+            Si True, grafica frecuencia vs tiempo relativo (default: False)
+        exportar_excel : bool
+            Si True, exporta los datos a un archivo Excel (default: False)
+        acoplamiento, impedancia, atenuacion, trigger_level, trigger_slope, filtro : opcionales
+            Configuración avanzada del canal. Si se pasa None, no se configura ese parámetro.
+
+        Salida:
+        -------
+        frecuencias : np.ndarray
+            Array de frecuencias medidas (Hz)
+        timestamps : np.ndarray
+            Array de tiempos absolutos (s) en los que se tomó cada muestra
+        delta_tiempos : np.ndarray
+            Array de tiempos relativos al inicio (s)
+        """
+
+        import numpy as np
+        import time
+
+        # ====== SECCIÓN 1: Validación de parámetros y canal ======
+        canales = {'A': 1, 'B': 2, '1': 1, '2': 2}
+        ch = str(canal).upper()
+        if ch not in canales:
+            raise ValueError("El canal debe ser 'A', 'B', 1 o 2")
+        canal_num = canales[ch]
+
+        # ====== SECCIÓN 2: Reset y limpieza del instrumento ======
+        self.dev.write('*RST')
+        self.dev.write('*CLS')
+
+        # ====== SECCIÓN 3: Configuración avanzada de canal (solo si se especifica) ======
+        if acoplamiento is not None:
+            self.dev.write(f':INP{canal_num}:COUP {acoplamiento}')
+        if impedancia is not None:
+            self.dev.write(f':INP{canal_num}:IMP {impedancia}')
+        if atenuacion is not None:
+            self.dev.write(f':INP{canal_num}:ATT {atenuacion}')
+        if trigger_level is not None:
+            self.dev.write(f':INP{canal_num}:TRL {trigger_level}')
+        if trigger_slope is not None:
+            self.dev.write(f':INP{canal_num}:TRS {trigger_slope}')
+        if filtro is not None:
+            self.dev.write(f':INP{canal_num}:FIL:DIG:FREQ {filtro}')
+
+        # ====== SECCIÓN 4: Mejoras recomendadas según el manual ======
+        # self.dev.write('CAL:INT:AUTO OFF')   # Desactivar interpoladores solo si no necesitas máxima precisión
+        self.dev.write('DISP:ENAB OFF')
+
+        # ====== SECCIÓN 5: Timeout de comunicación VISA (30 segundos) ======
+        self.dev.timeout = 30000  # Timeout en milisegundos
+
+        # ====== SECCIÓN 6: Configuración del tiempo de integración (apertura) ======
+        if intervalo_captura is not None:
+            self.dev.write(f"SENS:ACQ:APER {intervalo_captura}")
+
+        # ====== SECCIÓN 7: Selección de formato PACKED para máxima velocidad ======
+        self.dev.write("FORM:PACK")
+
+        # ====== SECCIÓN 8: Adquisición de frecuencias y timestamps en binario ======
+        self.dev.write(f":MEASure:ARRay:FREQuency:BTBack? {n_muestras},{canal_num}")
+        data_freq = self.dev.read_raw()  # Usar read_raw() para binario
+        frecuencias = np.frombuffer(data_freq, dtype=np.float64)
+
+        self.dev.write(f":MEASure:ARRay:TSTAmp? {n_muestras},{canal_num}")
+        data_time = self.dev.read_raw()
+        timestamps = np.frombuffer(data_time, dtype=np.float64)
+
+        # ====== SECCIÓN 9: Control de errores en la adquisición ======
+        if len(frecuencias) != len(timestamps):
+            raise RuntimeError("El número de frecuencias y timestamps no coincide. Puede haber habido un error de comunicación.")
+
+        # ====== SECCIÓN 10: Cálculo de tiempos relativos ======
+        delta_tiempos = timestamps - timestamps[0]
+
+        # ====== SECCIÓN 11: Visualización opcional ======
+        if graficarFT:
+            import matplotlib.pyplot as plt
+            from matplotlib.ticker import MaxNLocator
+
+            maximo = np.max(frecuencias)
+            minimo = np.min(frecuencias)
+            media = np.mean(frecuencias)
+            mediana = np.median(frecuencias)
+            n_puntos = len(frecuencias)
+
+            plt.figure(figsize=(9, 5))
+            plt.plot(delta_tiempos, frecuencias, marker='o', linestyle='-', label='Frecuencia')
+            plt.xlabel('Tiempo relativo [s]', fontsize=12)
+            plt.ylabel('Frecuencia [Hz]', fontsize=12)
+            plt.title('Frecuencia vs Tiempo relativo')
+            plt.grid(True, which='both', linestyle='--', alpha=0.5)
+            plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+
+            texto_stats = (f"Máx: {maximo:.3f} Hz\n"
+                        f"Mín: {minimo:.3f} Hz\n"
+                        f"Media: {media:.3f} Hz\n"
+                        f"Mediana: {mediana:.3f} Hz\n"
+                        f"Nº puntos: {n_puntos}")
+            plt.gca().text(0.98, 0.02, texto_stats, fontsize=10,
+                        ha='right', va='bottom', transform=plt.gca().transAxes,
+                        bbox=dict(facecolor='white', alpha=0.7, edgecolor='gray'))
+            plt.tight_layout()
+            plt.show()
+
+        # ====== SECCIÓN 12: Exportar a Excel opcional ======
+        if exportar_excel:
+            import pandas as pd
+            from datetime import datetime
+
+            fecha_hora = datetime.now().strftime("%S_%M_%H_%d_%m_%Y")
+            raw_data = {
+                "Muestra": [f"Muestra{i}" for i in range(len(frecuencias))],
+                "Frecuencia [Hz]": np.round(frecuencias, 6),
+                "Timestamp [s]": np.round(timestamps, 6),
+                "Delta_tiempo [s]": np.round(delta_tiempos, 6)
+            }
+            df_raw = pd.DataFrame(raw_data)
+            nombre_raw = f"RawDataFreqYTiempo_BTBack_{fecha_hora}.xlsx"
+            df_raw.to_excel(nombre_raw, index=False, float_format="%.6f")
+            print(f"Archivo de datos crudos guardado como: {nombre_raw}")
+
+        # ====== SECCIÓN 13: Reactivar display al finalizar ======
+        self.dev.write('DISP:ENAB ON')
+
+        # ====== SECCIÓN 14: Devolver resultados ======
+        return frecuencias, timestamps, delta_tiempos
 
 
 
