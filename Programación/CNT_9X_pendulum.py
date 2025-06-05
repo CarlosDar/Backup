@@ -1533,7 +1533,7 @@ class CNT_frequenciometro:
 
 
 
-# probar primero esta
+# probar primero esta  overlapping
     def medir_n_muestras_equidistantesV31_BTBack(
         self,
         n_muestras=100,
@@ -1605,7 +1605,26 @@ class CNT_frequenciometro:
 
         # ====== SECCIÓN 3: Timeout de comunicación VISA (30 segundos) ======
         self.dev.timeout = 30000  # Timeout en milisegundos
+        """
+                # Calcula el tiempo estimado de adquisición [PROBAR]
+        eps = 1e-12
+        T = intervalo_s
+        N = n_muestras
+        if abs(T - 4e-5) < eps and N == 2400:
+            tiempo_espera = 0.25
+        elif abs(T - 4e-4) < eps and N == 1000:
+            tiempo_espera = 0.8
+        else:
+            raw = 2 * T**0.88 * N**0.85
+            lin = 1.14 * T * N
+            val = max(raw, lin)
+            tiempo_espera = max(0.2, val) * 1.1
 
+        # Establece el timeout de VISA (en milisegundos)
+        self.dev.timeout = int(1000 * tiempo_espera * 1.2)  # 20% de margen extra
+        
+        
+        """
         # ====== SECCIÓN 4: Configuración del tiempo de integración (apertura) ======
         # Si el usuario pasa None, NO se configura y se usa el valor actual del instrumento
         if intervalo_captura is not None:
@@ -1681,7 +1700,7 @@ class CNT_frequenciometro:
         return frecuencias, timestamps, delta_tiempos
 
 
-# esta es un poquito mas ambiciosa
+# Falta corregir las SCPIs de configuración, falla por el canal , ha de ser 1 o 2
 
     def medir_n_muestras_equidistantesV31_BTBack( ## la recomendacion es de   , se llama overlapping
         self,
@@ -2028,7 +2047,7 @@ class CNT_frequenciometro:
         # ====== SECCIÓN 14: Devolver resultados ======
         return frecuencias, timestamps, delta_tiempos
 
-# para el adev de la anterior funcion
+# para el adev de la anterior funcion con método :  JOAN
     def calcular_allan_deviation_overlapping(frecuencias, intervalo_captura):
         """
         Calcula la desviación de Allan (Allan deviation) para un array de frecuencias equidistantes.
@@ -2073,7 +2092,7 @@ class CNT_frequenciometro:
 
 
 
-
+    # para el adev  :  JAUME
     def Calc_Adev_single_Tau(
         self,
         n_muestras=100,
@@ -2149,6 +2168,28 @@ class CNT_frequenciometro:
 
             # ====== Timeout de comunicación VISA (30 segundos) ======
             self.dev.timeout = 30000
+
+            """
+                        # Calcula el tiempo estimado de adquisición [PROBAR]
+            eps = 1e-12
+            T = intervalo_s
+            N = n_muestras
+            if abs(T - 4e-5) < eps and N == 2400:
+                tiempo_espera = 0.25
+            elif abs(T - 4e-4) < eps and N == 1000:
+                tiempo_espera = 0.8
+            else:
+                raw = 2 * T**0.88 * N**0.85
+                lin = 1.14 * T * N
+                val = max(raw, lin)
+                tiempo_espera = max(0.2, val) * 1.1
+
+            # Establece el timeout de VISA (en milisegundos)
+            self.dev.timeout = int(1000 * tiempo_espera * 1.2)  # 20% de margen extra
+            
+            
+            
+            """
 
             # ====== Configuración del tiempo de integración (apertura) ======
             self.dev.write("FORM:PACK")
